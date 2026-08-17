@@ -41,7 +41,10 @@ class ChatService:
         history = await self.repository.list_messages(conversation_id)
         llm_messages = [LLMMessage(role=m.role, content=m.content) for m in history]
 
-        response = await self.llm_provider.complete(system=CHAT_SYSTEM_PROMPT, messages=llm_messages)
+        response = await self.llm_provider.complete(
+            system=CHAT_SYSTEM_PROMPT,
+            messages=llm_messages,
+        )
 
         return await self.repository.add_message(
             conversation_id=conversation_id,

@@ -14,12 +14,22 @@ class MaritacaProvider:
     services depend on the LLMProvider Protocol, never on this class directly.
     """
 
-    def __init__(self, *, api_key: str, base_url: str, model: str):
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        model: str,
+    ):
         self._client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
         self._model = model
 
     async def complete(
-        self, *, system: str, messages: list[LLMMessage], max_tokens: int = 4096
+        self,
+        *,
+        system: str,
+        messages: list[LLMMessage],
+        max_tokens: int = 4096,
     ) -> LLMResponse:
         payload = [{"role": "system", "content": system}] + [
             {"role": m.role, "content": m.content} for m in messages
@@ -45,7 +55,12 @@ class MaritacaProvider:
         )
 
     async def complete_structured(
-        self, *, system: str, messages: list[LLMMessage], schema: type[BaseModel], max_tokens: int = 4096
+        self,
+        *,
+        system: str,
+        messages: list[LLMMessage],
+        schema: type[BaseModel],
+        max_tokens: int = 4096,
     ) -> BaseModel:
         conversation = "\n".join(f"{m.role}: {m.content}" for m in messages)
         try:
