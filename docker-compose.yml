@@ -21,10 +21,20 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://butter_mind:butter_mind@db:5432/butter_mind
     ports:
-      - "8000:8000"
+      - "8001:8000"
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      default:
+      devbutter_shared:
+        aliases:
+          - mind-api
 
 volumes:
   pgdata:
+
+networks:
+  default:
+  devbutter_shared:
+    external: true
