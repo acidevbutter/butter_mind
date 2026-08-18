@@ -17,11 +17,14 @@ services:
 
   api:
     build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://butter_mind:butter_mind@db:5432/butter_mind
     ports:
       - "8001:8000"
+    volumes:
+      - ./app:/app/app
     depends_on:
       db:
         condition: service_healthy
@@ -30,6 +33,11 @@ services:
       devbutter_shared:
         aliases:
           - mind-api
+    develop:
+      watch:
+        - path: ./app
+          action: sync+restart
+          target: /app/app
 
 volumes:
   pgdata:
