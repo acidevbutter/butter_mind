@@ -21,7 +21,10 @@ class MaritacaProvider:
         base_url: str,
         model: str,
     ):
-        self._client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self._client = openai.AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+        )
         self._model = model
 
     async def complete(
