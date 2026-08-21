@@ -266,7 +266,7 @@ poetry run app db history
 |---|---|---|
 | `DEBUG` | `false` | Enables SQLAlchemy `echo` |
 | `LOG_LEVEL` | `INFO` | |
-| `DATABASE_URL` | `postgresql+asyncpg://butter_mind:butter_mind@localhost:5434/butter_mind` | |
+| `DATABASE_URL` | `postgresql+asyncpg://butter_mind:butter_mind@db:5432/butter_mind` | |
 | `CORS_ALLOWED_ORIGINS` | `["http://localhost:3000"]` | JSON list |
 | `CORS_ALLOWED_ORIGIN_REGEX` | — | |
 | `MARITACA_API_KEY` | — | Required for any `/chat` or `/diagnosis` call to work |

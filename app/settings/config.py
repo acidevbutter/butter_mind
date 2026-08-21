@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
 
-    database_url: str = "postgresql+asyncpg://butter_mind:butter_mind@localhost:5432/butter_mind"
+    database_url: str = "postgresql+asyncpg://butter_mind:butter_mind@db:5432/butter_mind"
 
     cors_allowed_origins: list[str] = ["http://localhost:3000"]
     cors_allowed_origin_regex: str | None = None
