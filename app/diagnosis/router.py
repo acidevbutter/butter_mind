@@ -1,7 +1,9 @@
+import json
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
+from fastapi.responses import StreamingResponse
 
 from app.core.dependencies import DbSession, LLMProviderDep, RequireInternalApiKey
 from app.diagnosis.repository import DiagnosisRepository
@@ -59,30 +61,39 @@ async def send_message(
 
 
 @router.post(
+    "/sessions/{session_id}/messages/stream",
+    summary="Send a message in the guided diagnosis flow, streaming the reply (SSE)",
+    description=(
+        "Internal endpoint (called only by devbutter_backend, never the browser directly). "
+        "Sends the visitor's answer, then streams the assistant's reply as server-sent "
+        "events: one `{\"type\": \"delta\", \"content\": ...}` line per text chunk as it "
+        "comes off the LLM, followed by a final `{\"type\": \"done\", \"ready_to_submit\": "
+        "..., \"message_id\": ...}` once the full reply has been persisted and extracted."
+    ),
+)
+async def send_message_stream(
+    session_id: uuid.UUID, payload: DiagnosisMessageCreate, service: DiagnosisServiceDep
+) -> StreamingResponse:
+    async def event_stream():
+        async for event in service.stream_message(session_id=session_id, content=payload.content):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post(
     "/sessions/{session_id}/submit", response_model=DiagnosisRequestRead,
     status_code=status.HTTP_201_CREATED, summary="Finalize the session into a diagnosis request (lead)",
     description=(
-        "Closes out a diagnosis session and converts it into a stored lead, attaching "
-        "optional contact details. Use this once the guided flow is complete and the "
-        "visitor wants to submit their info, e.g. the final 'send me my diagnosis' step "
-        "that hands the lead off to sales."
+        "Closes out a diagnosis session and converts it into a stored lead. Contact details "
+        "(name, email, phone, company, cnpj) are pulled from the conversation's own "
+        "extraction, not passed in here -- the guided flow asks for them naturally. Use this "
+        "once the guided flow is complete and the visitor wants to submit their info, e.g. "
+        "the final 'send me my diagnosis' step that hands the lead off to sales."
     ),
 )
-async def submit(
-    session_id: uuid.UUID,
-    service: DiagnosisServiceDep,
-    contact_name: str | None = None,
-    contact_email: str | None = None,
-    contact_phone: str | None = None,
-    company_name: str | None = None,
-) -> DiagnosisRequestRead:
-    diagnosis_request = await service.submit(
-        session_id=session_id,
-        contact_name=contact_name,
-        contact_email=contact_email,
-        contact_phone=contact_phone,
-        company_name=company_name,
-    )
+async def submit(session_id: uuid.UUID, service: DiagnosisServiceDep) -> DiagnosisRequestRead:
+    diagnosis_request = await service.submit(session_id=session_id)
     return DiagnosisRequestRead.model_validate(diagnosis_request)
 
 

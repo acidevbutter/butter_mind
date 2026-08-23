@@ -1,4 +1,5 @@
 import json
+from collections.abc import AsyncIterator
 
 import openai
 from pydantic import BaseModel
@@ -56,6 +57,29 @@ class MaritacaProvider:
                 output_tokens=usage.completion_tokens if usage else None,
             ),
         )
+
+    async def complete_stream(
+        self,
+        *,
+        system: str,
+        messages: list[LLMMessage],
+        max_tokens: int = 4096,
+    ) -> AsyncIterator[str]:
+        payload = [{"role": "system", "content": system}] + [
+            {"role": m.role, "content": m.content} for m in messages
+        ]
+        try:
+            stream = await self._client.chat.completions.create(
+                model=self._model, messages=payload, max_tokens=max_tokens, stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    yield delta
+        except openai.RateLimitError as exc:
+            raise LLMRateLimitError() from exc
+        except openai.OpenAIError as exc:
+            raise LLMProviderError(str(exc)) from exc
 
     async def complete_structured(
         self,

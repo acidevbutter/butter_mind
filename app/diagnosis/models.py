@@ -40,6 +40,7 @@ class DiagnosisRequest(Base):
     contact_email: Mapped[str | None]
     contact_phone: Mapped[str | None]
     company_name: Mapped[str | None]
+    cnpj: Mapped[str | None]
     problem_summary: Mapped[str] = mapped_column(Text)
     services_of_interest: Mapped[list] = mapped_column(JSON, default=list)
     budget_range: Mapped[str | None]

@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from typing import Protocol
 
 from pydantic import BaseModel
@@ -13,6 +14,15 @@ class LLMProvider(Protocol):
         messages: list[LLMMessage],
         max_tokens: int = 4096,
     ) -> LLMResponse:
+        ...
+
+    async def complete_stream(
+        self,
+        *,
+        system: str,
+        messages: list[LLMMessage],
+        max_tokens: int = 4096,
+    ) -> AsyncIterator[str]:
         ...
 
     async def complete_structured(

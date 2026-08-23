@@ -82,6 +82,47 @@ async def test_complete_raises_llm_provider_error(provider):
         await provider.complete(system="system", messages=[])
 
 
+async def _fake_stream(chunks: list[str | None]):
+    for content in chunks:
+        yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=content))])
+
+
+async def test_complete_stream_yields_non_empty_deltas(provider):
+    provider._client.chat.completions.create = AsyncMock(
+        return_value=_fake_stream(["Olá", None, ", ", "", "tudo bem?"])
+    )
+
+    deltas = [
+        delta
+        async for delta in provider.complete_stream(
+            system="system prompt", messages=[LLMMessage(role="user", content="Oi")]
+        )
+    ]
+
+    assert deltas == ["Olá", ", ", "tudo bem?"]
+
+    call_kwargs = provider._client.chat.completions.create.call_args.kwargs
+    assert call_kwargs["model"] == "sabia-4"
+    assert call_kwargs["stream"] is True
+    assert call_kwargs["messages"][0] == {"role": "system", "content": "system prompt"}
+
+
+async def test_complete_stream_raises_llm_rate_limit_error(provider):
+    provider._client.chat.completions.create = AsyncMock(side_effect=_rate_limit_error())
+
+    with pytest.raises(LLMRateLimitError):
+        async for _ in provider.complete_stream(system="system", messages=[]):
+            pass
+
+
+async def test_complete_stream_raises_llm_provider_error(provider):
+    provider._client.chat.completions.create = AsyncMock(side_effect=_connection_error())
+
+    with pytest.raises(LLMProviderError):
+        async for _ in provider.complete_stream(system="system", messages=[]):
+            pass
+
+
 async def test_complete_structured_returns_parsed_schema(provider):
     fake_response = SimpleNamespace(
         output=[
