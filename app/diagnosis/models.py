@@ -91,6 +91,23 @@ class DiagnosisTurnMetrics(Base):
     chunks_retrieved: Mapped[list[dict[str, str | float]]] = mapped_column(JSON, default=list)
     chunks_used_count: Mapped[int] = mapped_column(default=0)
     input_tokens: Mapped[int | None]
+    cached_input_tokens: Mapped[int | None]
     output_tokens: Mapped[int | None]
     model: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DiagnosisRuntimeSettings(Base):
+    """Safe diagnosis limits overridden from the private admin."""
+
+    __tablename__ = "diagnosis_runtime_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    diagnosis_max_output_tokens: Mapped[int]
+    diagnosis_max_history_messages: Mapped[int]
+    diagnosis_max_turns: Mapped[int]
+    diagnosis_grounding_top_k: Mapped[int]
+    diagnosis_grounding_min_score: Mapped[float]
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

@@ -1,10 +1,11 @@
 import uuid
 from collections.abc import AsyncIterator
+from typing import cast
 
 from app.core.decorators import log_errors
 from app.core.exceptions import ValidationDomainError
 from app.core.llm.provider import LLMProvider
-from app.core.llm.schemas import LLMMessage
+from app.core.llm.schemas import LLMMessage, LLMResponse
 from app.diagnosis.models import (
     DiagnosisMessage,
     DiagnosisRequest,
@@ -12,7 +13,15 @@ from app.diagnosis.models import (
     DiagnosisTurnMetrics,
 )
 from app.diagnosis.repository import DiagnosisRepository
-from app.diagnosis.schemas import DiagnosisExtraction, DiagnosisPreview, DiagnosisSessionCreate
+from app.diagnosis.schemas import (
+    DiagnosisExtraction,
+    DiagnosisGovernanceRead,
+    DiagnosisGovernanceUpdate,
+    DiagnosisModelUsageRead,
+    DiagnosisPreview,
+    DiagnosisSessionCreate,
+    MindDashboardOverviewRead,
+)
 from app.knowledge.models import KnowledgeChunk
 from app.knowledge.service import KnowledgeIngestionService
 from app.settings.config import settings
@@ -84,9 +93,101 @@ class DiagnosisService:
     async def list_turn_metrics(self, session_id: uuid.UUID) -> list[DiagnosisTurnMetrics]:
         return await self.repository.list_turn_metrics(session_id)
 
+    async def get_governance(self) -> DiagnosisGovernanceRead:
+        override = await self.repository.get_runtime_settings()
+        return DiagnosisGovernanceRead(
+            diagnosis_max_output_tokens=(
+                override.diagnosis_max_output_tokens
+                if override
+                else settings.diagnosis_max_output_tokens
+            ),
+            diagnosis_max_history_messages=(
+                override.diagnosis_max_history_messages
+                if override
+                else settings.diagnosis_max_history_messages
+            ),
+            diagnosis_max_turns=(
+                override.diagnosis_max_turns if override else settings.diagnosis_max_turns
+            ),
+            diagnosis_grounding_top_k=(
+                override.diagnosis_grounding_top_k
+                if override
+                else settings.diagnosis_grounding_top_k
+            ),
+            diagnosis_grounding_min_score=(
+                override.diagnosis_grounding_min_score
+                if override
+                else settings.diagnosis_grounding_min_score
+            ),
+            uses_runtime_override=override is not None,
+            maritaca_model=settings.maritaca_model,
+            embeddings_model_name=settings.embeddings_model_name,
+        )
+
+    async def update_governance(
+        self, payload: DiagnosisGovernanceUpdate
+    ) -> DiagnosisGovernanceRead:
+        await self.repository.save_runtime_settings(**payload.model_dump())
+        return await self.get_governance()
+
+    async def dashboard_overview(self) -> MindDashboardOverviewRead:
+        data = await self.repository.dashboard_data()
+        metrics = data.pop("turn_metrics")
+        assert isinstance(metrics, list)
+        grouped: dict[str | None, dict[str, int]] = {}
+        grounded_turns = 0
+        input_tokens = 0
+        cached_input_tokens = 0
+        output_tokens = 0
+        turns_without_token_usage = 0
+        for metric in metrics:
+            assert isinstance(metric, DiagnosisTurnMetrics)
+            group = grouped.setdefault(
+                metric.model,
+                {
+                    "turns": 0,
+                    "input_tokens": 0,
+                    "cached_input_tokens": 0,
+                    "output_tokens": 0,
+                    "turns_without_token_usage": 0,
+                },
+            )
+            group["turns"] += 1
+            if metric.chunks_used_count > 0:
+                grounded_turns += 1
+            if metric.input_tokens is None or metric.output_tokens is None:
+                turns_without_token_usage += 1
+                group["turns_without_token_usage"] += 1
+            else:
+                input_tokens += metric.input_tokens
+                cached_input_tokens += metric.cached_input_tokens or 0
+                output_tokens += metric.output_tokens
+                group["input_tokens"] += metric.input_tokens
+                group["cached_input_tokens"] += metric.cached_input_tokens or 0
+                group["output_tokens"] += metric.output_tokens
+        return MindDashboardOverviewRead(
+            diagnosis_sessions=cast(int, data["diagnosis_sessions"]),
+            sessions_in_progress=cast(int, data["sessions_in_progress"]),
+            submitted_requests=cast(int, data["submitted_requests"]),
+            possibly_ungrounded_requests=cast(int, data["possibly_ungrounded_requests"]),
+            assistant_turns=len(metrics),
+            grounded_turns=grounded_turns,
+            turns_without_token_usage=turns_without_token_usage,
+            input_tokens=input_tokens,
+            cached_input_tokens=cached_input_tokens,
+            output_tokens=output_tokens,
+            knowledge_sources=cast(int, data["knowledge_sources"]),
+            knowledge_chunks=cast(int, data["knowledge_chunks"]),
+            last_knowledge_update_at=data["last_knowledge_update_at"],
+            model_usage=[
+                DiagnosisModelUsageRead(model=model, **values)
+                for model, values in sorted(grouped.items(), key=lambda item: item[0] or "")
+            ],
+        )
+
     async def _build_turn_context(
         self, *, session_id: uuid.UUID, content: str
-    ) -> tuple[str, list[LLMMessage], list[tuple[KnowledgeChunk, float]]]:
+    ) -> tuple[str, list[LLMMessage], list[tuple[KnowledgeChunk, float]], DiagnosisGovernanceRead]:
         """Persists the visitor's message, then assembles what this turn's LLM
         call needs: a grounded system prompt (§2.2a), a fixed-size window of
         recent messages instead of the full transcript (§2.3), and the
@@ -94,10 +195,11 @@ class DiagnosisService:
         Raises ValidationDomainError once diagnosis_max_turns is reached,
         before persisting the message or calling the LLM.
         """
+        governance = await self.get_governance()
         turns_used = await self.repository.count_user_messages(session_id)
-        if turns_used >= settings.diagnosis_max_turns:
+        if turns_used >= governance.diagnosis_max_turns:
             raise ValidationDomainError(
-                f"This diagnosis session reached its {settings.diagnosis_max_turns}-turn "
+                f"This diagnosis session reached its {governance.diagnosis_max_turns}-turn "
                 "limit -- submit what has been gathered so far instead of continuing."
             )
 
@@ -107,17 +209,17 @@ class DiagnosisService:
 
         retrieved = await self.knowledge_service.search(
             query=content,
-            top_k=settings.diagnosis_grounding_top_k,
-            min_score=settings.diagnosis_grounding_min_score,
+            top_k=governance.diagnosis_grounding_top_k,
+            min_score=governance.diagnosis_grounding_min_score,
         )
         chunks = [chunk for chunk, _score in retrieved]
         system_prompt = _build_grounded_system_prompt(chunks)
 
         history = await self.repository.list_recent_messages(
-            session_id, limit=settings.diagnosis_max_history_messages
+            session_id, limit=governance.diagnosis_max_history_messages
         )
         llm_messages = [LLMMessage(role=m.role, content=m.content) for m in history]
-        return system_prompt, llm_messages, retrieved
+        return system_prompt, llm_messages, retrieved, governance
 
     async def _record_turn_metrics(
         self,
@@ -126,6 +228,7 @@ class DiagnosisService:
         assistant_message_id: uuid.UUID,
         retrieved: list[tuple[KnowledgeChunk, float]],
         input_tokens: int | None,
+        cached_input_tokens: int | None,
         output_tokens: int | None,
         model: str | None,
     ) -> None:
@@ -142,6 +245,7 @@ class DiagnosisService:
             chunks_retrieved=chunks_retrieved,
             chunks_used_count=len(retrieved),
             input_tokens=input_tokens,
+            cached_input_tokens=cached_input_tokens,
             output_tokens=output_tokens,
             model=model,
         )
@@ -173,14 +277,14 @@ class DiagnosisService:
         self, *, session_id: uuid.UUID, content: str
     ) -> tuple[DiagnosisMessage, bool, DiagnosisPreview]:
         await self.repository.get_session(session_id)
-        system_prompt, llm_messages, retrieved = await self._build_turn_context(
+        system_prompt, llm_messages, retrieved, governance = await self._build_turn_context(
             session_id=session_id, content=content
         )
 
         response = await self.llm_provider.complete(
             system=system_prompt,
             messages=llm_messages,
-            max_tokens=settings.diagnosis_max_output_tokens,
+            max_tokens=governance.diagnosis_max_output_tokens,
         )
         assistant_message = await self.repository.add_message(
             diagnosis_session_id=session_id, role="assistant", content=response.content
@@ -190,12 +294,14 @@ class DiagnosisService:
             assistant_message_id=assistant_message.id,
             retrieved=retrieved,
             input_tokens=response.usage.input_tokens,
+            cached_input_tokens=response.usage.cached_input_tokens,
             output_tokens=response.usage.output_tokens,
             model=response.model,
         )
 
         extraction = await self._extract(
-            llm_messages + [LLMMessage(role="assistant", content=response.content)]
+            llm_messages + [LLMMessage(role="assistant", content=response.content)],
+            max_tokens=governance.diagnosis_max_output_tokens,
         )
         preview = self._preview(extraction, grounded=bool(retrieved))
         ready_to_submit = extraction.ready_to_submit and not preview.missing_information
@@ -213,7 +319,7 @@ class DiagnosisService:
         """
         await self.repository.get_session(session_id)
         try:
-            system_prompt, llm_messages, retrieved = await self._build_turn_context(
+            system_prompt, llm_messages, retrieved, governance = await self._build_turn_context(
                 session_id=session_id, content=content
             )
         except ValidationDomainError as exc:
@@ -221,34 +327,37 @@ class DiagnosisService:
             return
 
         full_content = ""
-        async for delta in self.llm_provider.complete_stream(
+        stream_response: LLMResponse | None = None
+        async for event in self.llm_provider.complete_stream(
             system=system_prompt,
             messages=llm_messages,
-            max_tokens=settings.diagnosis_max_output_tokens,
+            max_tokens=governance.diagnosis_max_output_tokens,
         ):
-            full_content += delta
-            yield {"type": "delta", "content": delta}
+            if event.type == "delta":
+                full_content += event.content
+                yield {"type": "delta", "content": event.content}
+            elif event.response is not None:
+                stream_response = event.response
 
         assistant_message = await self.repository.add_message(
             diagnosis_session_id=session_id, role="assistant", content=full_content
         )
-        # complete_stream yields plain text deltas (AsyncIterator[str]) -- it
-        # doesn't expose usage today, and devbutter_backend's Socket.IO relay
-        # (docs/plano-streaming-socketio-chat.md) already consumes it under
-        # that contract, so token counts for streamed turns are recorded as
-        # unknown (None) rather than changing that interface here. TODO:
-        # thread `stream_options={"include_usage": True}` through a richer
-        # return type if per-streamed-turn token accounting becomes necessary.
+        # The external SSE contract stays delta/done, while the provider's
+        # final ``response.completed`` event supplies exact token usage.
         await self._record_turn_metrics(
             session_id=session_id,
             assistant_message_id=assistant_message.id,
             retrieved=retrieved,
-            input_tokens=None,
-            output_tokens=None,
-            model=None,
+            input_tokens=stream_response.usage.input_tokens if stream_response else None,
+            cached_input_tokens=(
+                stream_response.usage.cached_input_tokens if stream_response else None
+            ),
+            output_tokens=stream_response.usage.output_tokens if stream_response else None,
+            model=stream_response.model if stream_response else None,
         )
         extraction = await self._extract(
-            llm_messages + [LLMMessage(role="assistant", content=full_content)]
+            llm_messages + [LLMMessage(role="assistant", content=full_content)],
+            max_tokens=governance.diagnosis_max_output_tokens,
         )
         preview = self._preview(extraction, grounded=bool(retrieved))
         ready_to_submit = extraction.ready_to_submit and not preview.missing_information
@@ -259,12 +368,12 @@ class DiagnosisService:
             "preview": preview.model_dump(),
         }
 
-    async def _extract(self, messages: list[LLMMessage]) -> DiagnosisExtraction:
+    async def _extract(self, messages: list[LLMMessage], *, max_tokens: int) -> DiagnosisExtraction:
         result = await self.llm_provider.complete_structured(
             system=EXTRACTION_SYSTEM_PROMPT,
             messages=messages,
             schema=DiagnosisExtraction,
-            max_tokens=settings.diagnosis_max_output_tokens,
+            max_tokens=max_tokens,
         )
         assert isinstance(result, DiagnosisExtraction)
         return result
@@ -285,7 +394,10 @@ class DiagnosisService:
             raise ValidationDomainError("Cannot submit a diagnosis request with no conversation")
 
         llm_messages = [LLMMessage(role=m.role, content=m.content) for m in history]
-        extraction = await self._extract(llm_messages)
+        governance = await self.get_governance()
+        extraction = await self._extract(
+            llm_messages, max_tokens=governance.diagnosis_max_output_tokens
+        )
         turn_metrics = await self.repository.list_turn_metrics(session_id)
         preview = self._preview(
             extraction, grounded=any(tm.chunks_used_count > 0 for tm in turn_metrics)

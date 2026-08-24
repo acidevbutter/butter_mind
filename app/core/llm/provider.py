@@ -3,7 +3,7 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from app.core.llm.schemas import LLMMessage, LLMResponse
+from app.core.llm.schemas import LLMMessage, LLMResponse, LLMStreamEvent
 
 
 class LLMProvider(Protocol):
@@ -22,7 +22,7 @@ class LLMProvider(Protocol):
         system: str,
         messages: list[LLMMessage],
         max_tokens: int = 4096,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[LLMStreamEvent]:
         ...
 
     async def complete_structured(

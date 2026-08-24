@@ -29,6 +29,7 @@ class ChatMessage(Base):
     role: Mapped[str]
     content: Mapped[str] = mapped_column(Text)
     input_tokens: Mapped[int | None]
+    cached_input_tokens: Mapped[int | None]
     output_tokens: Mapped[int | None]
     model: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

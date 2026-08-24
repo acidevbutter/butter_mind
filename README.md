@@ -95,10 +95,11 @@ The guided lead-qualification flow — the backend for "Solicitar diagnóstico":
    contact info, problem summary, services of interest, budget range, timeline, and a JSON snapshot
    of the raw transcript) and marks the session `completed`. A unique constraint on
    `diagnosis_session_id` means a session can only ever produce one `DiagnosisRequest`.
-4. `GET /diagnosis/requests` (admin-gated) lists all leads for internal follow-up — there is no
-   dashboard yet, this is the only way to read them today (see `docs/admin-wireframe-prompts.md`'s
-   planned "Conversas da IA" admin screen in `devbutter_platform` for where this should eventually
-   surface).
+4. `GET /diagnosis/requests` (admin-gated) lists all leads for internal follow-up.
+   `GET /diagnosis/internal/dashboard/overview` supplies the aggregate data to the authenticated
+   DevButter admin through `devbutter_platform`; the browser never calls this service directly.
+   `GET/PATCH /diagnosis/internal/dashboard/settings` exposes only safe diagnosis limits, while
+   secrets and infrastructure configuration remain deployment-only.
 
 ### `knowledge/`
 
@@ -114,6 +115,7 @@ records their ids/scores per turn. Both ingestion routes require the internal AP
 erDiagram
     CHAT_CONVERSATION ||--o{ CHAT_MESSAGE : has
     DIAGNOSIS_SESSION ||--o{ DIAGNOSIS_MESSAGE : has
+    DIAGNOSIS_SESSION ||--o{ DIAGNOSIS_TURN_METRICS : measures
     DIAGNOSIS_SESSION ||--o| DIAGNOSIS_REQUEST : produces
     KNOWLEDGE_SOURCE ||--o{ KNOWLEDGE_CHUNK : has
 
@@ -128,6 +130,7 @@ erDiagram
         string role
         text content
         int input_tokens
+        int cached_input_tokens
         int output_tokens
         string model
     }
@@ -141,6 +144,14 @@ erDiagram
         uuid diagnosis_session_id FK
         string role
         text content
+    }
+    DIAGNOSIS_TURN_METRICS {
+        uuid id PK
+        uuid diagnosis_session_id FK
+        int input_tokens
+        int cached_input_tokens
+        int output_tokens
+        string model
     }
     DIAGNOSIS_REQUEST {
         uuid id PK

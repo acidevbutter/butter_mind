@@ -58,6 +58,7 @@ async def test_send_message_grounds_reply_with_retrieved_chunks_and_records_metr
     assert len(body) == 1
     assert body[0]["chunks_used_count"] == 1
     assert body[0]["input_tokens"] == 1
+    assert body[0]["cached_input_tokens"] == 1
     assert body[0]["output_tokens"] == 1
 
 

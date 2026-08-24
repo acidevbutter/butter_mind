@@ -40,6 +40,7 @@ class ChatRepository:
         role: str,
         content: str,
         input_tokens: int | None = None,
+        cached_input_tokens: int | None = None,
         output_tokens: int | None = None,
         model: str | None = None,
     ) -> ChatMessage:
@@ -48,6 +49,7 @@ class ChatRepository:
             role=role,
             content=content,
             input_tokens=input_tokens,
+            cached_input_tokens=cached_input_tokens,
             output_tokens=output_tokens,
             model=model,
         )

@@ -51,6 +51,7 @@ class ChatService:
             role="assistant",
             content=response.content,
             input_tokens=response.usage.input_tokens,
+            cached_input_tokens=response.usage.cached_input_tokens,
             output_tokens=response.usage.output_tokens,
             model=response.model,
         )

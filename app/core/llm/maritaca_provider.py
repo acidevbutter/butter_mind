@@ -1,11 +1,12 @@
 import json
 from collections.abc import AsyncIterator
+from typing import Any, cast
 
 import openai
 from pydantic import BaseModel
 
 from app.core.llm.exceptions import LLMProviderError, LLMRateLimitError
-from app.core.llm.schemas import LLMMessage, LLMResponse, LLMUsage
+from app.core.llm.schemas import LLMMessage, LLMResponse, LLMStreamEvent, LLMUsage
 
 
 class MaritacaProvider:
@@ -28,6 +29,41 @@ class MaritacaProvider:
         )
         self._model = model
 
+    @staticmethod
+    def _input(messages: list[LLMMessage]) -> list[dict[str, str]]:
+        """Keep the stable instructions outside the dynamic conversation.
+
+        Maritaca detects identical prompt prefixes automatically. Passing the
+        fixed system prompt through ``instructions`` first lets it be reused
+        while each visitor message remains the variable tail of the request.
+        """
+        return [{"role": message.role, "content": message.content} for message in messages]
+
+    @staticmethod
+    def _usage(usage: object | None) -> LLMUsage:
+        if usage is None:
+            return LLMUsage()
+        cache_details = getattr(usage, "input_tokens_details", None) or getattr(
+            usage, "prompt_tokens_details", None
+        )
+        return LLMUsage(
+            input_tokens=getattr(usage, "input_tokens", None)
+            if hasattr(usage, "input_tokens")
+            else getattr(usage, "prompt_tokens", None),
+            cached_input_tokens=getattr(cache_details, "cached_tokens", None),
+            output_tokens=getattr(usage, "output_tokens", None)
+            if hasattr(usage, "output_tokens")
+            else getattr(usage, "completion_tokens", None),
+        )
+
+    @staticmethod
+    def _content(response: object) -> str:
+        output = getattr(response, "output", [])
+        if not output:
+            return ""
+        content = getattr(output[0], "content", [])
+        return getattr(content[0], "text", "") if content else ""
+
     async def complete(
         self,
         *,
@@ -35,27 +71,22 @@ class MaritacaProvider:
         messages: list[LLMMessage],
         max_tokens: int = 4096,
     ) -> LLMResponse:
-        payload = [{"role": "system", "content": system}] + [
-            {"role": m.role, "content": m.content} for m in messages
-        ]
         try:
-            response = await self._client.chat.completions.create(
-                model=self._model, messages=payload, max_tokens=max_tokens,
+            response = await self._client.responses.create(
+                model=self._model,
+                instructions=system,
+                input=cast(Any, self._input(messages)),
+                max_output_tokens=max_tokens,
             )
         except openai.RateLimitError as exc:
             raise LLMRateLimitError() from exc
         except openai.OpenAIError as exc:
             raise LLMProviderError(str(exc)) from exc
 
-        choice = response.choices[0]
-        usage = response.usage
         return LLMResponse(
-            content=choice.message.content or "",
+            content=self._content(response),
             model=response.model,
-            usage=LLMUsage(
-                input_tokens=usage.prompt_tokens if usage else None,
-                output_tokens=usage.completion_tokens if usage else None,
-            ),
+            usage=self._usage(response.usage),
         )
 
     async def complete_stream(
@@ -64,18 +95,31 @@ class MaritacaProvider:
         system: str,
         messages: list[LLMMessage],
         max_tokens: int = 4096,
-    ) -> AsyncIterator[str]:
-        payload = [{"role": "system", "content": system}] + [
-            {"role": m.role, "content": m.content} for m in messages
-        ]
+    ) -> AsyncIterator[LLMStreamEvent]:
         try:
-            stream = await self._client.chat.completions.create(
-                model=self._model, messages=payload, max_tokens=max_tokens, stream=True,
+            stream = await self._client.responses.create(
+                model=self._model,
+                instructions=system,
+                input=cast(Any, self._input(messages)),
+                max_output_tokens=max_tokens,
+                stream=True,
             )
-            async for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield delta
+            async for event_raw in cast(Any, stream):
+                event = cast(Any, event_raw)
+                if event.type == "response.output_text.delta":
+                    delta = event.delta
+                    if delta:
+                        yield LLMStreamEvent(type="delta", content=delta)
+                elif event.type == "response.completed":
+                    response = event.response
+                    yield LLMStreamEvent(
+                        type="completed",
+                        response=LLMResponse(
+                            content=self._content(response),
+                            model=response.model,
+                            usage=self._usage(response.usage),
+                        ),
+                    )
         except openai.RateLimitError as exc:
             raise LLMRateLimitError() from exc
         except openai.OpenAIError as exc:
@@ -89,18 +133,18 @@ class MaritacaProvider:
         schema: type[BaseModel],
         max_tokens: int = 4096,
     ) -> BaseModel:
-        conversation = "\n".join(f"{m.role}: {m.content}" for m in messages)
         try:
             response = await self._client.responses.create(
                 model=self._model,
                 instructions=system,
-                input=conversation,
+                input=cast(Any, self._input(messages)),
                 max_output_tokens=max_tokens,
                 text={
                     "format": {
                         "type": "json_schema",
                         "name": schema.__name__,
                         "schema": schema.model_json_schema(),
+                        "strict": True,
                     }
                 },
             )
@@ -109,5 +153,5 @@ class MaritacaProvider:
         except openai.OpenAIError as exc:
             raise LLMProviderError(str(exc)) from exc
 
-        raw = response.output[0].content[0].text
+        raw = self._content(response)
         return schema.model_validate(json.loads(raw))

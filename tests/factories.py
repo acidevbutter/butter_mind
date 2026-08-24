@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from app.core.embeddings.provider import EmbeddingsProvider
 from app.core.llm.provider import LLMProvider
-from app.core.llm.schemas import LLMMessage, LLMResponse, LLMUsage
+from app.core.llm.schemas import LLMMessage, LLMResponse, LLMStreamEvent, LLMUsage
 from app.settings.config import settings
 
 
@@ -34,15 +34,25 @@ class FakeLLMProvider(LLMProvider):
     ) -> LLMResponse:
         self.calls.append({"system": system, "messages": messages, "max_tokens": max_tokens})
         return LLMResponse(
-            content=self.reply, model="fake-model", usage=LLMUsage(input_tokens=1, output_tokens=1)
+            content=self.reply,
+            model="fake-model",
+            usage=LLMUsage(input_tokens=1, cached_input_tokens=1, output_tokens=1),
         )
 
     async def complete_stream(
         self, *, system: str, messages: list[LLMMessage], max_tokens: int = 4096
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[LLMStreamEvent]:
         self.calls.append({"system": system, "messages": messages, "max_tokens": max_tokens})
         for delta in self.stream_deltas:
-            yield delta
+            yield LLMStreamEvent(type="delta", content=delta)
+        yield LLMStreamEvent(
+            type="completed",
+            response=LLMResponse(
+                content="".join(self.stream_deltas),
+                model="fake-model",
+                usage=LLMUsage(input_tokens=1, cached_input_tokens=1, output_tokens=1),
+            ),
+        )
 
     async def complete_structured(
         self,

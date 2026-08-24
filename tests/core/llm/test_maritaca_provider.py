@@ -32,11 +32,15 @@ def _connection_error() -> openai.APIConnectionError:
 
 async def test_complete_returns_llm_response(provider):
     fake_response = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content="Olá!"))],
+        output=[SimpleNamespace(content=[SimpleNamespace(text="Olá!")])],
         model="sabia-4",
-        usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+        usage=SimpleNamespace(
+            input_tokens=10,
+            output_tokens=5,
+            input_tokens_details=SimpleNamespace(cached_tokens=8),
+        ),
     )
-    provider._client.chat.completions.create = AsyncMock(return_value=fake_response)
+    provider._client.responses.create = AsyncMock(return_value=fake_response)
 
     result = await provider.complete(
         system="system prompt", messages=[LLMMessage(role="user", content="Oi")]
@@ -45,21 +49,23 @@ async def test_complete_returns_llm_response(provider):
     assert result.content == "Olá!"
     assert result.model == "sabia-4"
     assert result.usage.input_tokens == 10
+    assert result.usage.cached_input_tokens == 8
     assert result.usage.output_tokens == 5
 
-    call_kwargs = provider._client.chat.completions.create.call_args.kwargs
+    call_kwargs = provider._client.responses.create.call_args.kwargs
     assert call_kwargs["model"] == "sabia-4"
-    assert call_kwargs["messages"][0] == {"role": "system", "content": "system prompt"}
-    assert call_kwargs["messages"][1] == {"role": "user", "content": "Oi"}
+    assert call_kwargs["instructions"] == "system prompt"
+    assert call_kwargs["input"] == [{"role": "user", "content": "Oi"}]
+    assert call_kwargs["max_output_tokens"] == 4096
 
 
 async def test_complete_handles_missing_usage_and_content(provider):
     fake_response = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content=None))],
+        output=[],
         model="sabia-4",
         usage=None,
     )
-    provider._client.chat.completions.create = AsyncMock(return_value=fake_response)
+    provider._client.responses.create = AsyncMock(return_value=fake_response)
 
     result = await provider.complete(system="system", messages=[])
 
@@ -69,46 +75,66 @@ async def test_complete_handles_missing_usage_and_content(provider):
 
 
 async def test_complete_raises_llm_rate_limit_error(provider):
-    provider._client.chat.completions.create = AsyncMock(side_effect=_rate_limit_error())
+    provider._client.responses.create = AsyncMock(side_effect=_rate_limit_error())
 
     with pytest.raises(LLMRateLimitError):
         await provider.complete(system="system", messages=[])
 
 
 async def test_complete_raises_llm_provider_error(provider):
-    provider._client.chat.completions.create = AsyncMock(side_effect=_connection_error())
+    provider._client.responses.create = AsyncMock(side_effect=_connection_error())
 
     with pytest.raises(LLMProviderError):
         await provider.complete(system="system", messages=[])
 
 
-async def _fake_stream(chunks: list[str | None]):
-    for content in chunks:
-        yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=content))])
+async def _fake_stream(events: list[SimpleNamespace]):
+    for event in events:
+        yield event
 
 
 async def test_complete_stream_yields_non_empty_deltas(provider):
-    provider._client.chat.completions.create = AsyncMock(
-        return_value=_fake_stream(["Olá", None, ", ", "", "tudo bem?"])
+    final_response = SimpleNamespace(
+        output=[SimpleNamespace(content=[SimpleNamespace(text="Olá, tudo bem?")])],
+        model="sabia-4",
+        usage=SimpleNamespace(
+            input_tokens=10,
+            output_tokens=5,
+            input_tokens_details=SimpleNamespace(cached_tokens=8),
+        ),
+    )
+    provider._client.responses.create = AsyncMock(
+        return_value=_fake_stream(
+            [
+                SimpleNamespace(type="response.output_text.delta", delta="Olá"),
+                SimpleNamespace(type="response.output_text.delta", delta=""),
+                SimpleNamespace(type="response.output_text.delta", delta=", "),
+                SimpleNamespace(type="response.output_text.delta", delta="tudo bem?"),
+                SimpleNamespace(type="response.completed", response=final_response),
+            ]
+        )
     )
 
-    deltas = [
-        delta
-        async for delta in provider.complete_stream(
+    events = [
+        event
+        async for event in provider.complete_stream(
             system="system prompt", messages=[LLMMessage(role="user", content="Oi")]
         )
     ]
 
+    deltas = [event.content for event in events if event.type == "delta"]
     assert deltas == ["Olá", ", ", "tudo bem?"]
+    assert events[-1].response is not None
+    assert events[-1].response.usage.cached_input_tokens == 8
 
-    call_kwargs = provider._client.chat.completions.create.call_args.kwargs
+    call_kwargs = provider._client.responses.create.call_args.kwargs
     assert call_kwargs["model"] == "sabia-4"
     assert call_kwargs["stream"] is True
-    assert call_kwargs["messages"][0] == {"role": "system", "content": "system prompt"}
+    assert call_kwargs["instructions"] == "system prompt"
 
 
 async def test_complete_stream_raises_llm_rate_limit_error(provider):
-    provider._client.chat.completions.create = AsyncMock(side_effect=_rate_limit_error())
+    provider._client.responses.create = AsyncMock(side_effect=_rate_limit_error())
 
     with pytest.raises(LLMRateLimitError):
         async for _ in provider.complete_stream(system="system", messages=[]):
@@ -116,7 +142,7 @@ async def test_complete_stream_raises_llm_rate_limit_error(provider):
 
 
 async def test_complete_stream_raises_llm_provider_error(provider):
-    provider._client.chat.completions.create = AsyncMock(side_effect=_connection_error())
+    provider._client.responses.create = AsyncMock(side_effect=_connection_error())
 
     with pytest.raises(LLMProviderError):
         async for _ in provider.complete_stream(system="system", messages=[]):
@@ -125,6 +151,7 @@ async def test_complete_stream_raises_llm_provider_error(provider):
 
 async def test_complete_structured_returns_parsed_schema(provider):
     fake_response = SimpleNamespace(
+        model="sabia-4",
         output=[
             SimpleNamespace(
                 content=[SimpleNamespace(text='{"ready_to_submit": true, "summary": "resumo"}')]
@@ -145,8 +172,9 @@ async def test_complete_structured_returns_parsed_schema(provider):
 
     call_kwargs = provider._client.responses.create.call_args.kwargs
     assert call_kwargs["instructions"] == "system prompt"
-    assert call_kwargs["input"] == "user: Oi"
+    assert call_kwargs["input"] == [{"role": "user", "content": "Oi"}]
     assert call_kwargs["text"]["format"]["name"] == "_Extraction"
+    assert call_kwargs["text"]["format"]["strict"] is True
 
 
 async def test_complete_structured_raises_llm_rate_limit_error(provider):

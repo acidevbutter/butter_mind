@@ -8,10 +8,12 @@ from app.core.exceptions import ConflictError, NotFoundError
 from app.diagnosis.models import (
     DiagnosisMessage,
     DiagnosisRequest,
+    DiagnosisRuntimeSettings,
     DiagnosisSession,
     DiagnosisTurnMetrics,
 )
 from app.diagnosis.schemas import DiagnosisSessionCreate
+from app.knowledge.models import KnowledgeChunk, KnowledgeSource
 
 
 class DiagnosisRepository:
@@ -92,6 +94,72 @@ class DiagnosisRepository:
             .order_by(DiagnosisTurnMetrics.created_at)
         )
         return list(result.scalars().all())
+
+    async def get_runtime_settings(self) -> DiagnosisRuntimeSettings | None:
+        return await self.session.get(DiagnosisRuntimeSettings, 1)
+
+    async def save_runtime_settings(
+        self,
+        *,
+        diagnosis_max_output_tokens: int,
+        diagnosis_max_history_messages: int,
+        diagnosis_max_turns: int,
+        diagnosis_grounding_top_k: int,
+        diagnosis_grounding_min_score: float,
+    ) -> DiagnosisRuntimeSettings:
+        runtime_settings = await self.get_runtime_settings()
+        values = {
+            "diagnosis_max_output_tokens": diagnosis_max_output_tokens,
+            "diagnosis_max_history_messages": diagnosis_max_history_messages,
+            "diagnosis_max_turns": diagnosis_max_turns,
+            "diagnosis_grounding_top_k": diagnosis_grounding_top_k,
+            "diagnosis_grounding_min_score": diagnosis_grounding_min_score,
+        }
+        if runtime_settings is None:
+            runtime_settings = DiagnosisRuntimeSettings(id=1, **values)
+            self.session.add(runtime_settings)
+        else:
+            for key, value in values.items():
+                setattr(runtime_settings, key, value)
+        await self.session.commit()
+        await self.session.refresh(runtime_settings)
+        return runtime_settings
+
+    async def dashboard_data(self) -> dict[str, object]:
+        session_count = await self.session.scalar(
+            select(func.count()).select_from(DiagnosisSession)
+        )
+        in_progress_count = await self.session.scalar(
+            select(func.count())
+            .select_from(DiagnosisSession)
+            .where(DiagnosisSession.status == "in_progress")
+        )
+        request_count = await self.session.scalar(
+            select(func.count()).select_from(DiagnosisRequest)
+        )
+        ungrounded_request_count = await self.session.scalar(
+            select(func.count())
+            .select_from(DiagnosisRequest)
+            .where(DiagnosisRequest.possibly_ungrounded.is_(True))
+        )
+        source_count = await self.session.scalar(
+            select(func.count()).select_from(KnowledgeSource)
+        )
+        chunk_count = await self.session.scalar(select(func.count()).select_from(KnowledgeChunk))
+        last_knowledge_update_at = await self.session.scalar(
+            select(func.max(KnowledgeChunk.created_at))
+        )
+        metrics_result = await self.session.execute(select(DiagnosisTurnMetrics))
+        return {
+            "diagnosis_sessions": session_count or 0,
+            "sessions_in_progress": in_progress_count or 0,
+            "submitted_requests": request_count or 0,
+            "possibly_ungrounded_requests": ungrounded_request_count or 0,
+            "knowledge_sources": source_count or 0,
+            "knowledge_chunks": chunk_count or 0,
+            "last_knowledge_update_at": last_knowledge_update_at,
+            "turn_metrics": list(metrics_result.scalars().all()),
+        }
 
     async def mark_completed(self, diagnosis_session: DiagnosisSession) -> None:
         diagnosis_session.status = "completed"

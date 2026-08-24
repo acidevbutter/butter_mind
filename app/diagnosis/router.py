@@ -14,6 +14,8 @@ from app.core.dependencies import (
 )
 from app.diagnosis.repository import DiagnosisRepository
 from app.diagnosis.schemas import (
+    DiagnosisGovernanceRead,
+    DiagnosisGovernanceUpdate,
     DiagnosisMessageCreate,
     DiagnosisMessageRead,
     DiagnosisPreview,
@@ -22,6 +24,7 @@ from app.diagnosis.schemas import (
     DiagnosisSessionRead,
     DiagnosisTurnMetricsRead,
     DiagnosisTurnResponse,
+    MindDashboardOverviewRead,
 )
 from app.diagnosis.service import DiagnosisService
 from app.knowledge.repository import KnowledgeRepository
@@ -147,3 +150,35 @@ async def list_turn_metrics(
 async def list_requests(service: DiagnosisServiceDep) -> list[DiagnosisRequestRead]:
     requests = await service.list_requests()
     return [DiagnosisRequestRead.model_validate(r) for r in requests]
+
+
+@router.get(
+    "/internal/dashboard/overview",
+    response_model=MindDashboardOverviewRead,
+    summary="Internal AI metrics dashboard overview",
+    dependencies=[RequireInternalApiKey],
+)
+async def dashboard_overview(service: DiagnosisServiceDep) -> MindDashboardOverviewRead:
+    return await service.dashboard_overview()
+
+
+@router.get(
+    "/internal/dashboard/settings",
+    response_model=DiagnosisGovernanceRead,
+    summary="Read effective diagnosis governance settings",
+    dependencies=[RequireInternalApiKey],
+)
+async def get_dashboard_settings(service: DiagnosisServiceDep) -> DiagnosisGovernanceRead:
+    return await service.get_governance()
+
+
+@router.patch(
+    "/internal/dashboard/settings",
+    response_model=DiagnosisGovernanceRead,
+    summary="Update safe diagnosis governance settings",
+    dependencies=[RequireInternalApiKey],
+)
+async def update_dashboard_settings(
+    payload: DiagnosisGovernanceUpdate, service: DiagnosisServiceDep
+) -> DiagnosisGovernanceRead:
+    return await service.update_governance(payload)
