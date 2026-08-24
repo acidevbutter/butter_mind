@@ -21,5 +21,15 @@ class Settings(BaseSettings):
 
     internal_api_key: str = ""
 
+    # Fixed token/cost governance for the diagnosis chat flow (see
+    # docs/mapa-chat-widget-metricas-tokens.md §2.3) — replaces the previous
+    # unbounded "send the whole history every turn" behavior with three caps
+    # that make the max cost per session a known, computable number.
+    diagnosis_max_output_tokens: int = 1024
+    diagnosis_max_history_messages: int = 12
+    diagnosis_max_turns: int = 30
+    diagnosis_grounding_top_k: int = 3
+    diagnosis_grounding_min_score: float = 0.35
+
 
 settings = Settings()

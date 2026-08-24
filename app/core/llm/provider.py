@@ -16,7 +16,7 @@ class LLMProvider(Protocol):
     ) -> LLMResponse:
         ...
 
-    async def complete_stream(
+    def complete_stream(
         self,
         *,
         system: str,

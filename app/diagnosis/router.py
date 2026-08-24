@@ -1,27 +1,40 @@
 import json
 import uuid
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
 
-from app.core.dependencies import DbSession, LLMProviderDep, RequireInternalApiKey
+from app.core.dependencies import (
+    DbSession,
+    EmbeddingsProviderDep,
+    LLMProviderDep,
+    RequireInternalApiKey,
+)
 from app.diagnosis.repository import DiagnosisRepository
 from app.diagnosis.schemas import (
     DiagnosisMessageCreate,
     DiagnosisMessageRead,
+    DiagnosisPreview,
     DiagnosisRequestRead,
     DiagnosisSessionCreate,
     DiagnosisSessionRead,
+    DiagnosisTurnMetricsRead,
     DiagnosisTurnResponse,
 )
 from app.diagnosis.service import DiagnosisService
+from app.knowledge.repository import KnowledgeRepository
+from app.knowledge.service import KnowledgeIngestionService
 
 router = APIRouter(prefix="/diagnosis", tags=["diagnosis"])
 
 
-def get_diagnosis_service(db: DbSession, llm_provider: LLMProviderDep) -> DiagnosisService:
-    return DiagnosisService(DiagnosisRepository(db), llm_provider)
+def get_diagnosis_service(
+    db: DbSession, llm_provider: LLMProviderDep, embeddings_provider: EmbeddingsProviderDep
+) -> DiagnosisService:
+    knowledge_service = KnowledgeIngestionService(KnowledgeRepository(db), embeddings_provider)
+    return DiagnosisService(DiagnosisRepository(db), llm_provider, knowledge_service)
 
 
 DiagnosisServiceDep = Annotated[DiagnosisService, Depends(get_diagnosis_service)]
@@ -36,7 +49,9 @@ DiagnosisServiceDep = Annotated[DiagnosisService, Depends(get_diagnosis_service)
         "starting a 'get a project diagnosis' form on the site."
     ),
 )
-async def create_session(payload: DiagnosisSessionCreate, service: DiagnosisServiceDep) -> DiagnosisSessionRead:
+async def create_session(
+    payload: DiagnosisSessionCreate, service: DiagnosisServiceDep
+) -> DiagnosisSessionRead:
     diagnosis_session = await service.create_session(payload)
     return DiagnosisSessionRead.model_validate(diagnosis_session)
 
@@ -54,9 +69,13 @@ async def create_session(payload: DiagnosisSessionCreate, service: DiagnosisServ
 async def send_message(
     session_id: uuid.UUID, payload: DiagnosisMessageCreate, service: DiagnosisServiceDep
 ) -> DiagnosisTurnResponse:
-    message, ready_to_submit = await service.send_message(session_id=session_id, content=payload.content)
+    message, ready_to_submit, preview = await service.send_message(
+        session_id=session_id, content=payload.content
+    )
     return DiagnosisTurnResponse(
-        message=DiagnosisMessageRead.model_validate(message), ready_to_submit=ready_to_submit
+        message=DiagnosisMessageRead.model_validate(message),
+        ready_to_submit=ready_to_submit,
+        preview=DiagnosisPreview.model_validate(preview),
     )
 
 
@@ -74,7 +93,7 @@ async def send_message(
 async def send_message_stream(
     session_id: uuid.UUID, payload: DiagnosisMessageCreate, service: DiagnosisServiceDep
 ) -> StreamingResponse:
-    async def event_stream():
+    async def event_stream() -> AsyncIterator[str]:
         async for event in service.stream_message(session_id=session_id, content=payload.content):
             yield f"data: {json.dumps(event)}\n\n"
 
@@ -83,7 +102,8 @@ async def send_message_stream(
 
 @router.post(
     "/sessions/{session_id}/submit", response_model=DiagnosisRequestRead,
-    status_code=status.HTTP_201_CREATED, summary="Finalize the session into a diagnosis request (lead)",
+    status_code=status.HTTP_201_CREATED,
+    summary="Finalize the session into a diagnosis request (lead)",
     description=(
         "Closes out a diagnosis session and converts it into a stored lead. Contact details "
         "(name, email, phone, company, cnpj) are pulled from the conversation's own "
@@ -95,6 +115,24 @@ async def send_message_stream(
 async def submit(session_id: uuid.UUID, service: DiagnosisServiceDep) -> DiagnosisRequestRead:
     diagnosis_request = await service.submit(session_id=session_id)
     return DiagnosisRequestRead.model_validate(diagnosis_request)
+
+
+@router.get(
+    "/sessions/{session_id}/turn-metrics", response_model=list[DiagnosisTurnMetricsRead],
+    summary="List per-turn grounding/token metrics for a session (internal)",
+    dependencies=[RequireInternalApiKey],
+    description=(
+        "Lists structured per-assistant-turn metrics for a diagnosis session: how many "
+        "knowledge-base chunks were retrieved for grounding, and input/output token "
+        "counts. Use this to power an admin view for spotting turns that answered with "
+        "zero grounding (possibly hallucinated) before approving the quote it produced."
+    ),
+)
+async def list_turn_metrics(
+    session_id: uuid.UUID, service: DiagnosisServiceDep
+) -> list[DiagnosisTurnMetricsRead]:
+    metrics = await service.list_turn_metrics(session_id)
+    return [DiagnosisTurnMetricsRead.model_validate(m) for m in metrics]
 
 
 @router.get(

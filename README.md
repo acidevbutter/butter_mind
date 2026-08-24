@@ -10,8 +10,9 @@ LLM.
 - **Diagnosis**: a guided Q&A that gathers a visitor's problem, service interest, budget range and
   timeline, then extracts a structured lead (`DiagnosisRequest`) once enough information exists —
   this is the backend for the site's "Solicitar diagnóstico" flow.
-- **Knowledge**: ingestion only today (chunk + embed + store) — no retrieval/search endpoint exists
-  yet, so nothing in `chat` or `diagnosis` is RAG-augmented yet. See "Known gaps" below.
+- **Knowledge**: sources are chunked, embedded and retrieved for diagnosis turns. The diagnosis
+  prompt receives only chunks above the configured similarity threshold; empty retrieval is
+  exposed as an ungrounded signal for review.
 
 ## Architecture
 
@@ -101,13 +102,11 @@ The guided lead-qualification flow — the backend for "Solicitar diagnóstico":
 
 ### `knowledge/`
 
-Ingestion-only today: `POST /knowledge/sources` registers a source (a page, PDF, dataset — just
-metadata), `POST /knowledge/sources/{id}/ingest` naively chunks raw text (fixed 2000 chars, 200
-overlap — a placeholder, no semantic/markdown-aware splitting yet), embeds each chunk locally, and
-stores it in `knowledge_chunks` (pgvector `Vector` column, dimension pinned to
-`settings.embeddings_dimension`). **There is no search/retrieval endpoint** — nothing reads these
-embeddings back yet, and there's no similarity index (hnsw/ivfflat) on the column, deliberately
-deferred until a real query exists. Both routes require the internal API key.
+`POST /knowledge/sources` registers a source and `POST /knowledge/sources/{id}/ingest` naively
+chunks raw text (fixed 2000 chars, 200 overlap — a placeholder for future semantic/markdown-aware
+splitting), embeds each chunk locally and stores it in `knowledge_chunks`. Diagnosis searches the
+stored embeddings, returns the top configured chunks above `diagnosis_grounding_min_score`, and
+records their ids/scores per turn. Both ingestion routes require the internal API key.
 
 ## Data model
 

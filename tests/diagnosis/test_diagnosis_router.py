@@ -15,6 +15,8 @@ async def test_guided_flow_and_submit(client):
             services_of_interest=["web-platform"],
             budget_range="10-20k",
             timeline="2 meses",
+            contact_name="Fulano",
+            contact_email="fulano@example.com",
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake
@@ -85,6 +87,8 @@ async def test_send_message_stream_emits_deltas_in_order_then_done(client):
             ready_to_submit=True,
             problem_summary="Cliente precisa de um app mobile.",
             services_of_interest=["ai-agents"],
+            contact_name="Fulano",
+            contact_email="fulano@example.com",
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake
@@ -129,13 +133,17 @@ async def test_duplicate_submit_returns_409(client):
             ready_to_submit=True,
             problem_summary="Resumo.",
             services_of_interest=["ai-agents"],
+            contact_name="Fulano",
+            contact_email="fulano@example.com",
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake
 
     created = await client.post("/diagnosis/sessions", json={"session_id": "abc789"})
     session_id = created.json()["id"]
-    await client.post(f"/diagnosis/sessions/{session_id}/messages", json={"content": "Preciso de ajuda."})
+    await client.post(
+        f"/diagnosis/sessions/{session_id}/messages", json={"content": "Preciso de ajuda."}
+    )
 
     first = await client.post(f"/diagnosis/sessions/{session_id}/submit")
     assert first.status_code == 201
