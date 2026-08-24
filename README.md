@@ -25,17 +25,19 @@ flowchart LR
         Chat["/chat\nconversations, messages,\none-off generate"]
         Diagnosis["/diagnosis\nguided session -> lead"]
         Knowledge["/knowledge\ningest only (admin-gated)"]
+        Usage["/llm-usage/internal\nbudgets and monthly summary"]
     end
 
     LLM["LLMProvider protocol\n-> MaritacaProvider\n(Sabiá models, OpenAI-compatible)"]
     Embed["EmbeddingsProvider protocol\n-> LocalEmbeddingsProvider\n(sentence-transformers, in-process)"]
-    DB[("Postgres + pgvector\nchat_*, diagnosis_*,\nknowledge_*")]
+    DB[("Postgres + pgvector\nchat_*, diagnosis_*, knowledge_*,\nllm_usage_*, llm_budget_*")]
     Maritaca[("Maritaca AI API")]
 
     Visitor --> Chat
     Visitor --> Diagnosis
     Admin -->|X-Internal-Api-Key| Knowledge
     Admin -->|X-Internal-Api-Key| DiagnosisRequests["GET /diagnosis/requests\n(leads)"]
+    Admin -->|X-Internal-Api-Key| Usage
 
     Chat --> LLM
     Diagnosis --> LLM
@@ -51,8 +53,8 @@ Every domain follows the same five-file shape used across the DevButter services
 
 - **`core/llm/`**: `LLMProvider` is a `Protocol` — `MaritacaProvider` is the only implementation,
   wrapping Maritaca AI's Sabiá models through their OpenAI-compatible SDK surface
-  (`chat.completions.create` for free text, `responses.create` with a JSON-schema `text.format`
-  for structured extraction). Domain services (`ChatService`, `DiagnosisService`) depend on the
+  (`responses.create`; `instructions` carries the stable prompt and `input` the dynamic
+  conversation, enabling Maritaca prompt cache). Domain services (`ChatService`, `DiagnosisService`) depend on the
   protocol, never on `MaritacaProvider` directly, so swapping providers later doesn't touch them.
 - **`core/embeddings/`**: same pattern — `EmbeddingsProvider` protocol, `LocalEmbeddingsProvider`
   runs a `sentence-transformers` model **in-process** (no external embeddings API), lazily loaded
@@ -109,6 +111,14 @@ splitting), embeds each chunk locally and stores it in `knowledge_chunks`. Diagn
 stored embeddings, returns the top configured chunks above `diagnosis_grounding_min_score`, and
 records their ids/scores per turn. Both ingestion routes require the internal API key.
 
+### `llm_usage/`
+
+Persiste tokens e custo estimado em reais por fluxo (`general_chat`, `site_text_generation`,
+`diagnosis_chat`, `diagnosis_extraction`). `PUT /llm-usage/internal/budgets/{flow}` define o
+teto mensal; antes de chamar a Maritaca, o serviço compara o saldo com uma estimativa conservadora
+do pior caso. `GET /llm-usage/internal/summary` entrega o consumo do mês e os tokens cacheados.
+As três rotas são protegidas pela chave interna.
+
 ## Data model
 
 ```mermaid
@@ -118,6 +128,7 @@ erDiagram
     DIAGNOSIS_SESSION ||--o{ DIAGNOSIS_TURN_METRICS : measures
     DIAGNOSIS_SESSION ||--o| DIAGNOSIS_REQUEST : produces
     KNOWLEDGE_SOURCE ||--o{ KNOWLEDGE_CHUNK : has
+    LLM_USAGE_EVENT }o--|| LLM_BUDGET_LIMIT : is_limited_by
 
     CHAT_CONVERSATION {
         uuid id PK
@@ -181,6 +192,21 @@ erDiagram
         text content
         vector embedding "pgvector, dim = settings.embeddings_dimension"
         int token_count
+    }
+    LLM_USAGE_EVENT {
+        uuid id PK
+        string flow
+        string operation
+        string model
+        int input_tokens
+        int cached_input_tokens
+        int output_tokens
+        decimal estimated_cost_brl
+    }
+    LLM_BUDGET_LIMIT {
+        uuid id PK
+        string flow "unique"
+        decimal monthly_budget_brl
     }
 ```
 

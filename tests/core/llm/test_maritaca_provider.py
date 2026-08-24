@@ -166,9 +166,10 @@ async def test_complete_structured_returns_parsed_schema(provider):
         schema=_Extraction,
     )
 
-    assert isinstance(result, _Extraction)
-    assert result.ready_to_submit is True
-    assert result.summary == "resumo"
+    assert isinstance(result.data, _Extraction)
+    assert result.data.ready_to_submit is True
+    assert result.data.summary == "resumo"
+    assert result.response.usage.input_tokens is None
 
     call_kwargs = provider._client.responses.create.call_args.kwargs
     assert call_kwargs["instructions"] == "system prompt"

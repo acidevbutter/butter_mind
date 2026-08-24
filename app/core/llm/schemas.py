@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel
@@ -26,3 +27,9 @@ class LLMStreamEvent(BaseModel):
     type: Literal["delta", "completed"]
     content: str = ""
     response: LLMResponse | None = None
+
+
+@dataclass(frozen=True)
+class LLMStructuredResponse:
+    data: BaseModel
+    response: LLMResponse

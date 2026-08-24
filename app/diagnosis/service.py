@@ -1,9 +1,11 @@
+import json
 import uuid
 from collections.abc import AsyncIterator
 from typing import cast
 
 from app.core.decorators import log_errors
 from app.core.exceptions import ValidationDomainError
+from app.core.llm.exceptions import LLMBudgetExceededError, LLMPricingUnavailableError
 from app.core.llm.provider import LLMProvider
 from app.core.llm.schemas import LLMMessage, LLMResponse
 from app.diagnosis.models import (
@@ -24,6 +26,7 @@ from app.diagnosis.schemas import (
 )
 from app.knowledge.models import KnowledgeChunk
 from app.knowledge.service import KnowledgeIngestionService
+from app.llm_usage.service import LLMUsageService
 from app.settings.config import settings
 
 DIAGNOSIS_SYSTEM_PROMPT = (
@@ -76,10 +79,12 @@ class DiagnosisService:
         repository: DiagnosisRepository,
         llm_provider: LLMProvider,
         knowledge_service: KnowledgeIngestionService,
+        llm_usage_service: LLMUsageService,
     ):
         self.repository = repository
         self.llm_provider = llm_provider
         self.knowledge_service = knowledge_service
+        self.llm_usage_service = llm_usage_service
 
     async def create_session(self, payload: DiagnosisSessionCreate) -> DiagnosisSession:
         return await self.repository.create_session(payload)
@@ -281,7 +286,7 @@ class DiagnosisService:
             session_id=session_id, content=content
         )
 
-        response = await self.llm_provider.complete(
+        response = await self._complete_reply(
             system=system_prompt,
             messages=llm_messages,
             max_tokens=governance.diagnosis_max_output_tokens,
@@ -307,6 +312,26 @@ class DiagnosisService:
         ready_to_submit = extraction.ready_to_submit and not preview.missing_information
         return assistant_message, ready_to_submit, preview
 
+    async def _complete_reply(
+        self, *, system: str, messages: list[LLMMessage], max_tokens: int
+    ) -> LLMResponse:
+        await self.llm_usage_service.ensure_budget(
+            flow="diagnosis_chat",
+            model=settings.maritaca_model,
+            system=system,
+            messages=messages,
+            max_tokens=max_tokens,
+        )
+        response = await self.llm_provider.complete(
+            system=system,
+            messages=messages,
+            max_tokens=max_tokens,
+        )
+        await self.llm_usage_service.record(
+            flow="diagnosis_chat", operation="reply", response=response
+        )
+        return response
+
     async def stream_message(
         self, *, session_id: uuid.UUID, content: str
     ) -> AsyncIterator[dict[str, object]]:
@@ -327,6 +352,17 @@ class DiagnosisService:
             return
 
         full_content = ""
+        try:
+            await self.llm_usage_service.ensure_budget(
+                flow="diagnosis_chat",
+                model=settings.maritaca_model,
+                system=system_prompt,
+                messages=llm_messages,
+                max_tokens=governance.diagnosis_max_output_tokens,
+            )
+        except (LLMBudgetExceededError, LLMPricingUnavailableError) as exc:
+            yield {"type": "error", "detail": exc.detail}
+            return
         stream_response: LLMResponse | None = None
         async for event in self.llm_provider.complete_stream(
             system=system_prompt,
@@ -355,6 +391,10 @@ class DiagnosisService:
             output_tokens=stream_response.usage.output_tokens if stream_response else None,
             model=stream_response.model if stream_response else None,
         )
+        if stream_response is not None:
+            await self.llm_usage_service.record(
+                flow="diagnosis_chat", operation="reply_stream", response=stream_response
+            )
         extraction = await self._extract(
             llm_messages + [LLMMessage(role="assistant", content=full_content)],
             max_tokens=governance.diagnosis_max_output_tokens,
@@ -369,14 +409,25 @@ class DiagnosisService:
         }
 
     async def _extract(self, messages: list[LLMMessage], *, max_tokens: int) -> DiagnosisExtraction:
+        await self.llm_usage_service.ensure_budget(
+            flow="diagnosis_extraction",
+            model=settings.maritaca_model,
+            system=EXTRACTION_SYSTEM_PROMPT,
+            messages=messages,
+            max_tokens=max_tokens,
+            schema_text=json.dumps(DiagnosisExtraction.model_json_schema(), sort_keys=True),
+        )
         result = await self.llm_provider.complete_structured(
             system=EXTRACTION_SYSTEM_PROMPT,
             messages=messages,
             schema=DiagnosisExtraction,
             max_tokens=max_tokens,
         )
-        assert isinstance(result, DiagnosisExtraction)
-        return result
+        await self.llm_usage_service.record(
+            flow="diagnosis_extraction", operation="extract", response=result.response
+        )
+        assert isinstance(result.data, DiagnosisExtraction)
+        return result.data
 
     async def submit(self, *, session_id: uuid.UUID) -> DiagnosisRequest:
         """Contact details (name/email/phone/company/cnpj) come from the

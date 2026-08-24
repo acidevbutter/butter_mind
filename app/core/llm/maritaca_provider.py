@@ -6,7 +6,13 @@ import openai
 from pydantic import BaseModel
 
 from app.core.llm.exceptions import LLMProviderError, LLMRateLimitError
-from app.core.llm.schemas import LLMMessage, LLMResponse, LLMStreamEvent, LLMUsage
+from app.core.llm.schemas import (
+    LLMMessage,
+    LLMResponse,
+    LLMStreamEvent,
+    LLMStructuredResponse,
+    LLMUsage,
+)
 
 
 class MaritacaProvider:
@@ -132,7 +138,7 @@ class MaritacaProvider:
         messages: list[LLMMessage],
         schema: type[BaseModel],
         max_tokens: int = 4096,
-    ) -> BaseModel:
+    ) -> LLMStructuredResponse:
         try:
             response = await self._client.responses.create(
                 model=self._model,
@@ -154,4 +160,9 @@ class MaritacaProvider:
             raise LLMProviderError(str(exc)) from exc
 
         raw = self._content(response)
-        return schema.model_validate(json.loads(raw))
+        return LLMStructuredResponse(
+            data=schema.model_validate(json.loads(raw)),
+            response=LLMResponse(
+                content=raw, model=response.model, usage=self._usage(getattr(response, "usage", None))
+            ),
+        )

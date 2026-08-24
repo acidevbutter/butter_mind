@@ -14,12 +14,14 @@ from app.chat.schemas import (
 )
 from app.chat.service import ChatService
 from app.core.dependencies import DbSession, LLMProviderDep
+from app.llm_usage.repository import LLMUsageRepository
+from app.llm_usage.service import LLMUsageService
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 def get_chat_service(db: DbSession, llm_provider: LLMProviderDep) -> ChatService:
-    return ChatService(ChatRepository(db), llm_provider)
+    return ChatService(ChatRepository(db), llm_provider, LLMUsageService(LLMUsageRepository(db)))
 
 
 ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]

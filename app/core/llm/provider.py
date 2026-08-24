@@ -3,7 +3,7 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from app.core.llm.schemas import LLMMessage, LLMResponse, LLMStreamEvent
+from app.core.llm.schemas import LLMMessage, LLMResponse, LLMStreamEvent, LLMStructuredResponse
 
 
 class LLMProvider(Protocol):
@@ -32,5 +32,5 @@ class LLMProvider(Protocol):
         messages: list[LLMMessage],
         schema: type[BaseModel],
         max_tokens: int = 4096,
-    ) -> BaseModel:
+    ) -> LLMStructuredResponse:
         ...

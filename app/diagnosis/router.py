@@ -29,6 +29,8 @@ from app.diagnosis.schemas import (
 from app.diagnosis.service import DiagnosisService
 from app.knowledge.repository import KnowledgeRepository
 from app.knowledge.service import KnowledgeIngestionService
+from app.llm_usage.repository import LLMUsageRepository
+from app.llm_usage.service import LLMUsageService
 
 router = APIRouter(prefix="/diagnosis", tags=["diagnosis"])
 
@@ -37,7 +39,9 @@ def get_diagnosis_service(
     db: DbSession, llm_provider: LLMProviderDep, embeddings_provider: EmbeddingsProviderDep
 ) -> DiagnosisService:
     knowledge_service = KnowledgeIngestionService(KnowledgeRepository(db), embeddings_provider)
-    return DiagnosisService(DiagnosisRepository(db), llm_provider, knowledge_service)
+    return DiagnosisService(
+        DiagnosisRepository(db), llm_provider, knowledge_service, LLMUsageService(LLMUsageRepository(db))
+    )
 
 
 DiagnosisServiceDep = Annotated[DiagnosisService, Depends(get_diagnosis_service)]

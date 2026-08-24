@@ -5,7 +5,13 @@ from pydantic import BaseModel
 
 from app.core.embeddings.provider import EmbeddingsProvider
 from app.core.llm.provider import LLMProvider
-from app.core.llm.schemas import LLMMessage, LLMResponse, LLMStreamEvent, LLMUsage
+from app.core.llm.schemas import (
+    LLMMessage,
+    LLMResponse,
+    LLMStreamEvent,
+    LLMStructuredResponse,
+    LLMUsage,
+)
 from app.settings.config import settings
 
 
@@ -35,7 +41,7 @@ class FakeLLMProvider(LLMProvider):
         self.calls.append({"system": system, "messages": messages, "max_tokens": max_tokens})
         return LLMResponse(
             content=self.reply,
-            model="fake-model",
+            model="sabia-4",
             usage=LLMUsage(input_tokens=1, cached_input_tokens=1, output_tokens=1),
         )
 
@@ -49,7 +55,7 @@ class FakeLLMProvider(LLMProvider):
             type="completed",
             response=LLMResponse(
                 content="".join(self.stream_deltas),
-                model="fake-model",
+                model="sabia-4",
                 usage=LLMUsage(input_tokens=1, cached_input_tokens=1, output_tokens=1),
             ),
         )
@@ -61,10 +67,17 @@ class FakeLLMProvider(LLMProvider):
         messages: list[LLMMessage],
         schema: type[BaseModel],
         max_tokens: int = 4096,
-    ) -> BaseModel:
+    ) -> LLMStructuredResponse:
         self.calls.append({"system": system, "messages": messages, "max_tokens": max_tokens})
         if self.structured_response is not None:
-            return self.structured_response
+            return LLMStructuredResponse(
+                data=self.structured_response,
+                response=LLMResponse(
+                    content=self.structured_response.model_dump_json(),
+                    model="sabia-4",
+                    usage=LLMUsage(input_tokens=1, cached_input_tokens=1, output_tokens=1),
+                ),
+            )
         raise NotImplementedError("Set structured_response on FakeLLMProvider before calling this")
 
 
