@@ -21,6 +21,12 @@ class Settings(BaseSettings):
 
     internal_api_key: str = ""
 
+    # Shared key required on the public diagnosis/chat endpoints (proves the
+    # caller is devbutter_backend, not a browser hitting the API directly).
+    # Distinct from internal_api_key, which gates the small internal/admin
+    # audience (dashboard, CRM sync), not the public-facing flows.
+    service_api_key: str = ""
+
     # Fixed token/cost governance for the diagnosis chat flow (see
     # docs/mapa-chat-widget-metricas-tokens.md §2.3) — replaces the previous
     # unbounded "send the whole history every turn" behavior with three caps

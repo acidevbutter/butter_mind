@@ -11,6 +11,7 @@ from app.core.dependencies import (
     EmbeddingsProviderDep,
     LLMProviderDep,
     RequireInternalApiKey,
+    RequireServiceApiKey,
 )
 from app.diagnosis.repository import DiagnosisRepository
 from app.diagnosis.schemas import (
@@ -50,6 +51,7 @@ DiagnosisServiceDep = Annotated[DiagnosisService, Depends(get_diagnosis_service)
 @router.post(
     "/sessions", response_model=DiagnosisSessionRead,
     status_code=status.HTTP_201_CREATED, summary="Start a guided diagnosis session",
+    dependencies=[RequireServiceApiKey],
     description=(
         "Creates a new guided diagnosis session that walks a prospect through a structured "
         "set of questions. Use this to kick off a lead-qualification flow, e.g. a visitor "
@@ -66,6 +68,7 @@ async def create_session(
 @router.post(
     "/sessions/{session_id}/messages", response_model=DiagnosisTurnResponse,
     status_code=status.HTTP_201_CREATED, summary="Send a message in the guided diagnosis flow",
+    dependencies=[RequireServiceApiKey],
     description=(
         "Sends the visitor's answer to the diagnosis session, advances the guided "
         "conversation via the LLM, and reports whether enough information has been "
@@ -89,9 +92,11 @@ async def send_message(
 @router.post(
     "/sessions/{session_id}/messages/stream",
     summary="Send a message in the guided diagnosis flow, streaming the reply (SSE)",
+    dependencies=[RequireServiceApiKey],
     description=(
-        "Internal endpoint (called only by devbutter_backend, never the browser directly). "
-        "Sends the visitor's answer, then streams the assistant's reply as server-sent "
+        "Requires the X-Service-Api-Key header (called only by devbutter_backend, never "
+        "the browser directly). Sends the visitor's answer, then streams the assistant's "
+        "reply as server-sent "
         "events: one `{\"type\": \"delta\", \"content\": ...}` line per text chunk as it "
         "comes off the LLM, followed by a final `{\"type\": \"done\", \"ready_to_submit\": "
         "..., \"message_id\": ...}` once the full reply has been persisted and extracted."
@@ -111,6 +116,7 @@ async def send_message_stream(
     "/sessions/{session_id}/submit", response_model=DiagnosisRequestRead,
     status_code=status.HTTP_201_CREATED,
     summary="Finalize the session into a diagnosis request (lead)",
+    dependencies=[RequireServiceApiKey],
     description=(
         "Closes out a diagnosis session and converts it into a stored lead. Contact details "
         "(name, email, phone, company, cnpj) are pulled from the conversation's own "

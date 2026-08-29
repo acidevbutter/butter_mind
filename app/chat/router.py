@@ -13,7 +13,7 @@ from app.chat.schemas import (
     GenerateTextResponse,
 )
 from app.chat.service import ChatService
-from app.core.dependencies import DbSession, LLMProviderDep
+from app.core.dependencies import DbSession, LLMProviderDep, RequireServiceApiKey
 from app.llm_usage.repository import LLMUsageRepository
 from app.llm_usage.service import LLMUsageService
 
@@ -30,6 +30,7 @@ ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
 @router.post(
     "/conversations", response_model=ChatConversationRead,
     status_code=status.HTTP_201_CREATED, summary="Start a chat conversation",
+    dependencies=[RequireServiceApiKey],
     description=(
         "Creates a new chat conversation and returns its identifier. "
         "Use this to open a fresh thread before sending any messages, e.g. when a visitor "
@@ -44,6 +45,7 @@ async def create_conversation(payload: ChatConversationCreate, service: ChatServ
 @router.get(
     "/conversations/{conversation_id}", response_model=ChatConversationRead,
     summary="Get a chat conversation",
+    dependencies=[RequireServiceApiKey],
     description=(
         "Fetches metadata for a single conversation by id. "
         "Use this to restore a chat session on page reload or to confirm a conversation "
@@ -58,6 +60,7 @@ async def get_conversation(conversation_id: uuid.UUID, service: ChatServiceDep) 
 @router.get(
     "/conversations/{conversation_id}/messages", response_model=list[ChatMessageRead],
     summary="List messages in a conversation",
+    dependencies=[RequireServiceApiKey],
     description=(
         "Returns the full message history for a conversation, in order. "
         "Use this to render the chat transcript when a user reopens a previous conversation "
@@ -73,6 +76,7 @@ async def list_messages(conversation_id: uuid.UUID, service: ChatServiceDep) -> 
 @router.post(
     "/conversations/{conversation_id}/messages", response_model=ChatMessageRead,
     status_code=status.HTTP_201_CREATED, summary="Send a message and get the assistant's reply",
+    dependencies=[RequireServiceApiKey],
     description=(
         "Appends a user message to the conversation, runs it through the LLM provider, "
         "and returns the assistant's reply. Use this for the core turn-by-turn chat "
@@ -89,6 +93,7 @@ async def send_message(
 @router.post(
     "/generate", response_model=GenerateTextResponse,
     summary="Generate one-off dynamic text for a site section",
+    dependencies=[RequireServiceApiKey],
     description=(
         "Generates a single piece of text with no persisted conversation state. "
         "Use this for stateless content generation such as a dynamic hero headline, "

@@ -28,6 +28,21 @@ def require_internal_api_key(
 RequireInternalApiKey = Depends(require_internal_api_key)
 
 
+def require_service_api_key(
+    x_service_api_key: Annotated[str | None, Header()] = None,
+) -> None:
+    """Gate for the public diagnosis/chat endpoints that devbutter_backend
+    calls on behalf of site visitors -- distinct from require_internal_api_key,
+    which gates the small internal/admin audience (dashboard, CRM sync).
+    Fails closed (404) the same way when unconfigured.
+    """
+    if not settings.service_api_key or x_service_api_key != settings.service_api_key:
+        raise NotFoundError("Not found")
+
+
+RequireServiceApiKey = Depends(require_service_api_key)
+
+
 def get_llm_provider() -> LLMProvider:
     return MaritacaProvider(
         api_key=settings.maritaca_api_key,
