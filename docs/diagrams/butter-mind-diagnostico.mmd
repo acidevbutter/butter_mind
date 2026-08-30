@@ -1,0 +1,36 @@
+sequenceDiagram
+    participant V as Visitante
+    participant API as DiagnosisRouter
+    participant S as DiagnosisService
+    participant K as KnowledgeService
+    participant U as LLMUsageService
+    participant L as LLMProvider
+    participant DB as DiagnosisRepository
+
+    V->>API: POST /diagnosis/sessions
+    API->>DB: create in_progress session
+    DB-->>V: session id
+    loop Cada turno
+        V->>API: POST /sessions/{id}/messages
+        API->>S: send_message
+        S->>DB: count turns + persist user message
+        S->>K: search(query, top_k, min_score)
+        K-->>S: ranked chunks or empty
+        S->>U: ensure_budget(diagnosis_chat)
+        S->>L: complete(grounded prompt + recent history)
+        L-->>S: assistant reply + usage
+        S->>DB: persist reply + turn metrics
+        S->>U: record diagnosis_chat
+        S->>U: ensure_budget(diagnosis_extraction)
+        S->>L: complete_structured(transcript window)
+        L-->>S: extraction + usage
+        S->>U: record diagnosis_extraction
+        S-->>V: reply + preview + ready_to_submit
+    end
+    V->>API: POST /sessions/{id}/submit
+    API->>DB: load full transcript + metrics
+    API->>L: complete_structured(full transcript)
+    L-->>API: final extraction
+    API->>DB: create DiagnosisRequest
+    API->>DB: mark session completed
+    API-->>V: lead / validation error

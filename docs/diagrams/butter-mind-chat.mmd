@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant C as Cliente
+    participant API as ChatRouter
+    participant S as ChatService
+    participant DB as ChatRepository
+    participant U as LLMUsageService
+    participant L as LLMProvider
+
+    C->>API: POST /chat/conversations
+    API->>DB: create conversation
+    DB-->>C: conversation id
+    C->>API: POST /conversations/{id}/messages
+    API->>S: send_message
+    S->>DB: validate + persist user message
+    S->>DB: load full history
+    S->>U: ensure_budget(general_chat)
+    S->>L: complete(system, history)
+    L-->>S: text + token usage
+    S->>U: record usage/cost
+    S->>DB: persist assistant message
+    DB-->>C: assistant message
+
+    C->>API: POST /chat/generate
+    API->>U: ensure_budget(site_text_generation)
+    API->>L: complete(contextual prompt)
+    L-->>C: generated text (not persisted)

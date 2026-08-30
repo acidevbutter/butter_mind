@@ -1,0 +1,13 @@
+flowchart TD
+    A[Admin / devbutter_backend] -->|X-Internal-Api-Key| B[Dashboard diagnóstico]
+    A -->|X-Internal-Api-Key| C[Budgets e summary]
+    B --> D[Runtime diagnosis settings]
+    C --> E[LLMUsageService]
+    F[Cada chamada LLM] --> G{ensure_budget}
+    G -->|permitida| H[Provedor LLM]
+    H --> I[record tokens/custo]
+    G -->|excedida| J[Erro de domínio]
+    D --> G
+    E --> K[(llm_usage_events / llm_budget_limits)]
+    I --> K
+    B --> L[(diagnosis_turn_metrics / leads)]

@@ -1,0 +1,25 @@
+flowchart LR
+    Visitor[Visitante / frontend]
+    Admin[Admin / backend interno]
+    subgraph Mind[butter_mind FastAPI]
+        Chat[Chat persistente e generate]
+        Diagnosis[Diagnóstico guiado]
+        Knowledge[Ingestão e retrieval]
+        Governance[Governança e métricas]
+    end
+    DB[(PostgreSQL + pgvector)]
+    LLM[Maritaca / LLMProvider]
+    Embed[Embeddings locais]
+
+    Visitor --> Chat
+    Visitor --> Diagnosis
+    Admin -->|X-Internal-Api-Key| Knowledge
+    Admin -->|X-Internal-Api-Key| Governance
+    Chat --> LLM
+    Diagnosis --> Knowledge
+    Diagnosis --> LLM
+    Chat --> DB
+    Diagnosis --> DB
+    Knowledge --> Embed
+    Knowledge --> DB
+    Governance --> DB

@@ -1,0 +1,12 @@
+flowchart TD
+    A[Admin com chave interna] --> B[POST /knowledge/sources]
+    B --> C[(knowledge_sources)]
+    A --> D[POST /sources/{id}/ingest]
+    D --> E[Chunk fixo: 2000 chars / 200 overlap]
+    E --> F[EmbeddingsProvider local]
+    F --> G[(knowledge_chunks + vector)]
+    H[Mensagem do diagnóstico] --> I[Embedding da consulta]
+    I --> J[similarity search + min_score]
+    G --> J
+    J --> K[Chunks no system prompt]
+    K --> L[Resposta grounded + métricas]
