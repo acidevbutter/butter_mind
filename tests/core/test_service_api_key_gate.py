@@ -7,11 +7,21 @@ that override to exercise the real dependency end to end.
 import json
 
 from app.core.dependencies import get_llm_provider, require_service_api_key
+from app.diagnosis.schemas import DiagnosisExtraction
 from app.main import app
 from app.settings.config import settings
 from tests.factories import FakeLLMProvider
 
 HEADER = "X-Service-Api-Key"
+
+# Minimal extraction so the per-turn complete_structured() call in the diagnosis
+# flow doesn't blow up -- these tests only exercise the auth gate, not extraction.
+# Empty fields keep ready_to_submit False and make an authenticated submit 422.
+_EMPTY_EXTRACTION = DiagnosisExtraction(
+    ready_to_submit=False,
+    problem_summary="",
+    services_of_interest=[],
+)
 
 
 def _disable_default_override():
@@ -38,7 +48,9 @@ async def test_diagnosis_create_session_requires_service_api_key(client, monkeyp
 
 async def test_diagnosis_send_message_and_submit_require_service_api_key(client, monkeypatch):
     monkeypatch.setattr(settings, "service_api_key", "s3cret")
-    app.dependency_overrides[get_llm_provider] = lambda: FakeLLMProvider(reply="ok")
+    app.dependency_overrides[get_llm_provider] = lambda: FakeLLMProvider(
+        reply="ok", structured_response=_EMPTY_EXTRACTION
+    )
 
     created = await client.post(
         "/diagnosis/sessions", json={"session_id": "gate-2"}, headers={HEADER: "s3cret"}
@@ -74,7 +86,9 @@ async def test_diagnosis_send_message_and_submit_require_service_api_key(client,
 
 async def test_diagnosis_send_message_stream_requires_service_api_key(client, monkeypatch):
     monkeypatch.setattr(settings, "service_api_key", "s3cret")
-    app.dependency_overrides[get_llm_provider] = lambda: FakeLLMProvider(stream_deltas=["ok"])
+    app.dependency_overrides[get_llm_provider] = lambda: FakeLLMProvider(
+        stream_deltas=["ok"], structured_response=_EMPTY_EXTRACTION
+    )
 
     created = await client.post(
         "/diagnosis/sessions", json={"session_id": "gate-3"}, headers={HEADER: "s3cret"}

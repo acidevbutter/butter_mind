@@ -10,6 +10,7 @@ def log_call(func):
     an error line (with traceback) if it raises, then re-raises unchanged.
     """
     log = logging.getLogger(func.__module__)
+    
     qualname = func.__qualname__
 
     if inspect.iscoroutinefunction(func):

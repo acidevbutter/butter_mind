@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+- Fluxo Cotação IA turno 2 (ADR-0004): `DiagnosisSession` passa a ter estado
+  (`stage`, `business_profile`, `selected_option_key`, `options_snapshot`);
+  a extração propõe 2-3 `ProductOption` precificadas (faixa/prazo em texto);
+  `stage` (`qualifying`→`choosing`→`collecting`→`ready`) é computado no servidor;
+  novos `POST /diagnosis/sessions/{id}/select-option` (409 p/ chave fora das
+  propostas) e `PATCH /diagnosis/sessions/{id}/business-profile`; `submit` aceita
+  overrides de opção/perfil e valida `stage == "ready"`; `DiagnosisRequest`
+  carrega `selected_option_key` + `business_profile`. Uma migração
+  (`c9a1d3e5b7f2`). `EXTRACTION_PROMPT_VERSION` → `2026-09-02-product-options`.
+- `DiagnosisExtraction`/`BusinessProfile` ganham `city` e `business_metrics`
+  (0-4 stat cards `{label, value, computed}`) para o dossiê ao vivo da Cotação
+  IA (canvas tela 2a); `EXTRACTION_SYSTEM_PROMPT` instruído a nunca inventar
+  número e a marcar `computed=true` só para figuras derivadas;
+  `EXTRACTION_PROMPT_VERSION` → `2026-09-02-business-metrics`. Sem migração
+  (campos só de preview). Ver `docs/architecture/adr-0003-fluxo-cotacao-dossie-portal.md`.
 - Removido `--reload` da imagem Docker para execução em produção.
 
 - Documentados os fluxos existentes, pontos fortes, falhas e lacunas do serviço em Markdown e Mermaid.

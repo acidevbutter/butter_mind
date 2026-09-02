@@ -4,6 +4,7 @@ from app.core.decorators import log_errors
 from app.core.llm.exceptions import LLMBudgetExceededError, LLMPricingUnavailableError
 from app.core.llm.pricing import actual_cost_brl, maximum_cost_brl
 from app.core.llm.schemas import LLMMessage, LLMResponse
+from app.core.metrics import emit_metrics
 from app.llm_usage.repository import LLMUsageRepository
 from app.llm_usage.schemas import (
     LLMBudgetLimitRead,
@@ -50,12 +51,26 @@ class LLMUsageService:
             raise LLMPricingUnavailableError(model)
         start, end = _month_window()
         spent = await self.repository.monthly_cost(flow=flow, start=start, end=end)
+        budget_amount = budget.monthly_budget_brl
+        if budget_amount > 0:
+            await emit_metrics(
+                dimensions={"Flow": flow, "Model": model},
+                values={
+                    "LLMBudgetUtilizationPercent": (
+                        float(spent / budget_amount * 100),
+                        "Percent",
+                    )
+                },
+            )
         if spent + maximum_cost > budget.monthly_budget_brl:
+            await emit_metrics(
+                dimensions={"Flow": flow, "Model": model},
+                values={"LLMBudgetExceeded": (1, "Count")},
+            )
             raise LLMBudgetExceededError(flow=flow, budget=budget.monthly_budget_brl, spent=spent)
 
-    async def record(
-        self, *, flow: str, operation: str, response: LLMResponse
-    ) -> None:
+    async def record(self, *, flow: str, operation: str, response: LLMResponse) -> None:
+        estimated_cost_brl = actual_cost_brl(response.model, response.usage)
         await self.repository.add_event(
             flow=flow,
             operation=operation,
@@ -63,12 +78,24 @@ class LLMUsageService:
             input_tokens=response.usage.input_tokens,
             cached_input_tokens=response.usage.cached_input_tokens,
             output_tokens=response.usage.output_tokens,
-            estimated_cost_brl=actual_cost_brl(response.model, response.usage),
+            estimated_cost_brl=estimated_cost_brl,
         )
+        values: dict[str, tuple[float, str]] = {}
+        if response.usage.input_tokens is not None:
+            values["LLMInputTokens"] = (response.usage.input_tokens, "Count")
+        if response.usage.cached_input_tokens is not None:
+            values["LLMCachedInputTokens"] = (response.usage.cached_input_tokens, "Count")
+        if response.usage.output_tokens is not None:
+            values["LLMOutputTokens"] = (response.usage.output_tokens, "Count")
+        if estimated_cost_brl is not None:
+            values["LLMCostBRL"] = (float(estimated_cost_brl), "None")
+        if values:
+            await emit_metrics(
+                dimensions={"Flow": flow, "Model": response.model},
+                values=values,
+            )
 
-    async def save_budget(
-        self, *, flow: str, payload: LLMBudgetLimitUpdate
-    ) -> LLMBudgetLimitRead:
+    async def save_budget(self, *, flow: str, payload: LLMBudgetLimitUpdate) -> LLMBudgetLimitRead:
         budget = await self.repository.save_budget(flow=flow, **payload.model_dump())
         return LLMBudgetLimitRead.model_validate(budget)
 

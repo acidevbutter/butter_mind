@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -6,6 +8,7 @@ class Settings(BaseSettings):
 
     debug: bool = False
     log_level: str = "INFO"
+    environment: Literal["development", "staging", "preprod", "production"] = "development"
 
     database_url: str = "postgresql+asyncpg://butter_mind:butter_mind@db:5432/butter_mind"
 

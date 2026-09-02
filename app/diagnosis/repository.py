@@ -165,6 +165,15 @@ class DiagnosisRepository:
         diagnosis_session.status = "completed"
         await self.session.commit()
 
+    async def update_session(
+        self, diagnosis_session: DiagnosisSession, **fields: object
+    ) -> DiagnosisSession:
+        for key, value in fields.items():
+            setattr(diagnosis_session, key, value)
+        await self.session.commit()
+        await self.session.refresh(diagnosis_session)
+        return diagnosis_session
+
     async def create_request(self, **fields: object) -> DiagnosisRequest:
         diagnosis_request = DiagnosisRequest(**fields)
         self.session.add(diagnosis_request)

@@ -3,20 +3,18 @@ import json
 from app.core.dependencies import get_llm_provider
 from app.diagnosis.schemas import DiagnosisExtraction
 from app.main import app
+from tests.diagnosis._turn2 import drive_to_ready, ready_extraction
 from tests.factories import FakeLLMProvider
 
 
 async def test_guided_flow_and_submit(client):
     fake = FakeLLMProvider(
         reply="Entendi, me conta mais sobre o problema.",
-        structured_response=DiagnosisExtraction(
-            ready_to_submit=True,
+        structured_response=ready_extraction(
             problem_summary="Cliente precisa de um site institucional novo.",
             services_of_interest=["web-platform"],
             budget_range="10-20k",
             timeline="2 meses",
-            contact_name="Fulano",
-            contact_email="fulano@example.com",
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake
@@ -25,18 +23,16 @@ async def test_guided_flow_and_submit(client):
     assert created.status_code == 201
     session_id = created.json()["id"]
 
-    turn = await client.post(
-        f"/diagnosis/sessions/{session_id}/messages",
-        json={"content": "Preciso de um site novo para minha empresa."},
-    )
-    assert turn.status_code == 201
-    assert turn.json()["ready_to_submit"] is True
+    selected = await drive_to_ready(client, session_id)
+    assert selected["ready_to_submit"] is True
+    assert selected["preview"]["stage"] == "ready"
 
     submitted = await client.post(f"/diagnosis/sessions/{session_id}/submit")
     assert submitted.status_code == 201
     body = submitted.json()
     assert body["problem_summary"] == "Cliente precisa de um site institucional novo."
     assert body["services_of_interest"] == ["web-platform"]
+    assert body["selected_option_key"] == selected["preview"]["selected_option_key"]
 
 
 async def test_submit_pulls_contact_fields_from_the_extraction_itself(client):
@@ -47,12 +43,9 @@ async def test_submit_pulls_contact_fields_from_the_extraction_itself(client):
     """
     fake = FakeLLMProvider(
         reply="Perfeito, vou preparar seu diagnostico.",
-        structured_response=DiagnosisExtraction(
-            ready_to_submit=True,
+        structured_response=ready_extraction(
             problem_summary="Cliente precisa de uma plataforma de agendamento.",
             services_of_interest=["platform"],
-            budget_range="15-25k",
-            timeline="2 meses",
             contact_name="Visitante Anonimo",
             contact_email="visitante@example.com",
             contact_phone="+5511988887777",
@@ -65,10 +58,7 @@ async def test_submit_pulls_contact_fields_from_the_extraction_itself(client):
     created = await client.post("/diagnosis/sessions", json={"session_id": "contact-1"})
     session_id = created.json()["id"]
 
-    await client.post(
-        f"/diagnosis/sessions/{session_id}/messages",
-        json={"content": "Sou a Visitante Anonimo, meu email e visitante@example.com."},
-    )
+    await drive_to_ready(client, session_id)
 
     submitted = await client.post(f"/diagnosis/sessions/{session_id}/submit")
     assert submitted.status_code == 201
@@ -112,7 +102,8 @@ async def test_send_message_stream_emits_deltas_in_order_then_done(client):
 
     assert [d["content"] for d in deltas] == ["Claro", ", ", "vamos", " conversar."]
     assert len(done_events) == 1
-    assert done_events[0]["ready_to_submit"] is True
+    # A bare turn only qualifies -- reaching ready needs a select-option call.
+    assert done_events[0]["ready_to_submit"] is False
     assert "message_id" in done_events[0]
 
 
@@ -129,21 +120,13 @@ async def test_submit_without_conversation_returns_422(client):
 async def test_duplicate_submit_returns_409(client):
     fake = FakeLLMProvider(
         reply="ok",
-        structured_response=DiagnosisExtraction(
-            ready_to_submit=True,
-            problem_summary="Resumo.",
-            services_of_interest=["ai-agents"],
-            contact_name="Fulano",
-            contact_email="fulano@example.com",
-        ),
+        structured_response=ready_extraction(problem_summary="Resumo."),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake
 
     created = await client.post("/diagnosis/sessions", json={"session_id": "abc789"})
     session_id = created.json()["id"]
-    await client.post(
-        f"/diagnosis/sessions/{session_id}/messages", json={"content": "Preciso de ajuda."}
-    )
+    await drive_to_ready(client, session_id)
 
     first = await client.post(f"/diagnosis/sessions/{session_id}/submit")
     assert first.status_code == 201

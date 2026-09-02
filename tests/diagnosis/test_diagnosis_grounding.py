@@ -16,6 +16,7 @@ from app.knowledge.schemas import KnowledgeSourceCreate
 from app.knowledge.service import KnowledgeIngestionService
 from app.main import app
 from app.settings.config import settings
+from tests.diagnosis._turn2 import drive_to_ready, ready_extraction
 from tests.factories import FakeEmbeddingsProvider, FakeLLMProvider
 
 
@@ -185,21 +186,15 @@ async def test_stream_message_emits_an_error_event_once_the_turn_cap_is_reached(
 async def test_submit_flags_possibly_ungrounded_when_no_turn_ever_retrieved_a_chunk(client):
     fake_llm = FakeLLMProvider(
         reply="ok",
-        structured_response=DiagnosisExtraction(
-            ready_to_submit=True,
-            problem_summary="Quer um app.",
-            services_of_interest=["ai-agents"],
-            contact_name="Fulano",
-            contact_email="fulano@example.com",
+        structured_response=ready_extraction(
+            problem_summary="Quer um app.", services_of_interest=["ai-agents"]
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake_llm
 
     created = await client.post("/diagnosis/sessions", json={"session_id": "ungrounded-1"})
     session_id = created.json()["id"]
-    await client.post(
-        f"/diagnosis/sessions/{session_id}/messages", json={"content": "Quero um app."}
-    )
+    await drive_to_ready(client, session_id, content="Quero um app.")
 
     submitted = await client.post(f"/diagnosis/sessions/{session_id}/submit")
     assert submitted.status_code == 201
@@ -214,12 +209,8 @@ async def test_submit_does_not_flag_possibly_ungrounded_when_a_turn_retrieved_a_
 
     fake_llm = FakeLLMProvider(
         reply="ok",
-        structured_response=DiagnosisExtraction(
-            ready_to_submit=True,
-            problem_summary="Quer um agente de IA.",
-            services_of_interest=["ai-agents"],
-            contact_name="Fulano",
-            contact_email="fulano@example.com",
+        structured_response=ready_extraction(
+            problem_summary="Quer um agente de IA.", services_of_interest=["ai-agents"]
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake_llm
@@ -227,7 +218,7 @@ async def test_submit_does_not_flag_possibly_ungrounded_when_a_turn_retrieved_a_
 
     created = await client.post("/diagnosis/sessions", json={"session_id": "grounded-1"})
     session_id = created.json()["id"]
-    await client.post(f"/diagnosis/sessions/{session_id}/messages", json={"content": chunk_text})
+    await drive_to_ready(client, session_id, content=chunk_text)
 
     submitted = await client.post(f"/diagnosis/sessions/{session_id}/submit")
     assert submitted.status_code == 201

@@ -48,8 +48,12 @@ flowchart LR
     LLM --> Maritaca
 ```
 
-Every domain follows the same five-file shape used across the DevButter services:
-`models.py` → `schemas.py` → `repository.py` → `service.py` → `router.py`.
+Every domain follows the same six-file shape used across the DevButter services:
+`models.py` → `schemas.py` → `repository.py` → `service.py` → `router.py` → `dependencies.py`.
+`dependencies.py` holds the domain's own DI wiring (`get_*_service` factories + their
+`Annotated[..., Depends(...)]` aliases); `router.py` is routes only. Cross-domain providers
+(`DbSession`, `LLMProviderDep`, `EmbeddingsProviderDep`, the API-key gates) stay in
+`core/dependencies.py`.
 
 - **`core/llm/`**: `LLMProvider` is a `Protocol` — `MaritacaProvider` is the only implementation,
   wrapping Maritaca AI's Sabiá models through their OpenAI-compatible SDK surface
@@ -266,6 +270,7 @@ app/
 │   ├── llm/              # LLMProvider protocol + MaritacaProvider + its own exceptions
 │   └── embeddings/       # EmbeddingsProvider protocol + LocalEmbeddingsProvider
 ├── db/               # base.py (DeclarativeBase), session.py, all_models.py (Alembic autogenerate)
+├── <domain>/         # each: models/schemas/repository/service/router/dependencies.py
 ├── chat/             # open-ended conversation + one-off generate
 ├── diagnosis/        # guided lead-qualification flow
 └── knowledge/        # ingest-only RAG source/chunk storage
