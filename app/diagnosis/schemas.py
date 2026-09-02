@@ -20,7 +20,8 @@ NextStepField = Literal[
 DiagnosisStage = Literal["qualifying", "choosing", "collecting", "ready"]
 
 # Business-profile keys required before stage can become "ready".
-REQUIRED_PROFILE_FIELDS = ("business_name", "segment", "contact_name")
+# contact_email is how the orçamento is delivered -- not optional.
+REQUIRED_PROFILE_FIELDS = ("business_name", "segment", "contact_name", "contact_email")
 
 
 class ProductOptionDraft(BaseModel):

@@ -209,6 +209,7 @@ def _sanitize_options(drafts: list[ProductOptionDraft]) -> list[ProductOption]:
     one-option chooser."""
     seen: set[str] = set()
     out: list[ProductOption] = []
+    recommended_index: int | None = None
     for draft in drafts:
         title = (draft.title or "").strip()
         if not title:
@@ -227,12 +228,15 @@ def _sanitize_options(drafts: list[ProductOptionDraft]) -> list[ProductOption]:
                 recommended=False,
             )
         )
+        if draft.recommended and recommended_index is None:
+            recommended_index = len(out) - 1
         if len(out) == 3:
             break
     if len(out) < 2:
         return []
-    # Exactly one recommended: honour the first draft flagged, else the first.
-    rec_index = next((i for i, d in enumerate(drafts[: len(out)]) if d.recommended), 0)
+    # Exactly one recommended, aligned with the drafts that actually landed
+    # in `out` (empty titles / duplicate keys are skipped above).
+    rec_index = recommended_index if recommended_index is not None else 0
     for i, opt in enumerate(out):
         opt.recommended = i == rec_index
     return out
@@ -267,10 +271,20 @@ def _missing_profile_fields(profile: dict[str, object]) -> list[str]:
     return [f for f in REQUIRED_PROFILE_FIELDS if not (profile.get(f) or "")]
 
 
+def _lead_scope_complete(extraction: DiagnosisExtraction) -> bool:
+    """Problem + at least one service -- the extraction prompt's bar for a
+    submitable lead, independent of the LLM's own ready_to_submit flag."""
+    return bool(extraction.problem_summary.strip()) and bool(extraction.services_of_interest)
+
+
 def _compute_stage(
-    *, selected_option_key: str | None, options: list[ProductOption], missing_fields: list[str]
+    *,
+    selected_option_key: str | None,
+    options: list[ProductOption],
+    missing_fields: list[str],
+    lead_scope_complete: bool,
 ) -> DiagnosisStage:
-    if selected_option_key and not missing_fields:
+    if selected_option_key and not missing_fields and lead_scope_complete:
         return "ready"
     if selected_option_key:
         return "collecting"
@@ -502,6 +516,7 @@ class DiagnosisService:
             selected_option_key=selected_key,
             options=options,
             missing_fields=missing_fields,
+            lead_scope_complete=_lead_scope_complete(extraction),
         )
 
         missing_information: list[str] = []
@@ -610,10 +625,15 @@ class DiagnosisService:
         self, session: DiagnosisSession, preview: DiagnosisPreview
     ) -> None:
         """Carry the computed stage forward, and snapshot the proposed options
-        while the visitor is choosing so select-option can validate the key."""
+        while the visitor is choosing so select-option can validate the key.
+        Drop the snapshot (and any leftover selection) when the concierge
+        falls back to qualifying -- otherwise a stale key still validates."""
         updates: dict[str, object] = {"stage": preview.stage}
         if preview.stage == "choosing" and preview.options:
             updates["options_snapshot"] = [o.model_dump() for o in preview.options]
+        elif preview.stage == "qualifying":
+            updates["options_snapshot"] = []
+            updates["selected_option_key"] = None
         await self.repository.update_session(session, **updates)
 
     async def _complete_reply(
