@@ -8,13 +8,14 @@ from app.core.embeddings.provider import EmbeddingsProvider
 from app.core.exceptions import NotFoundError
 from app.core.llm.maritaca_provider import MaritacaProvider
 from app.core.llm.provider import LLMProvider
+from app.core.metrics import emit_metrics
 from app.db.session import get_db_session
 from app.settings.config import settings
 
 DbSession = Annotated[AsyncSession, Depends(get_db_session)]
 
 
-def require_internal_api_key(
+async def require_internal_api_key(
     x_internal_api_key: Annotated[str | None, Header()] = None,
 ) -> None:
     """Gate for internal/admin endpoints (e.g. listing leads) — a single shared
@@ -22,13 +23,17 @@ def require_internal_api_key(
     auth if this surface grows beyond the DevButter team.
     """
     if not settings.internal_api_key or x_internal_api_key != settings.internal_api_key:
+        await emit_metrics(
+            dimensions={"AuthType": "internal_api_key", "Reason": "missing_or_invalid_key"},
+            values={"AuthFailure": (1, "Count")},
+        )
         raise NotFoundError("Not found")
 
 
 RequireInternalApiKey = Depends(require_internal_api_key)
 
 
-def require_service_api_key(
+async def require_service_api_key(
     x_service_api_key: Annotated[str | None, Header()] = None,
 ) -> None:
     """Gate for the public diagnosis/chat endpoints that devbutter_backend
@@ -37,6 +42,10 @@ def require_service_api_key(
     Fails closed (404) the same way when unconfigured.
     """
     if not settings.service_api_key or x_service_api_key != settings.service_api_key:
+        await emit_metrics(
+            dimensions={"AuthType": "service_api_key", "Reason": "missing_or_invalid_key"},
+            values={"AuthFailure": (1, "Count")},
+        )
         raise NotFoundError("Not found")
 
 

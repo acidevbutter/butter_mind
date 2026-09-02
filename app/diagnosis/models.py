@@ -13,6 +13,15 @@ class DiagnosisSession(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     session_id: Mapped[str] = mapped_column(index=True)
     status: Mapped[str] = mapped_column(default="in_progress")
+    # ADR-0004 turno-2 state. butter_mind recomputes the extraction from the
+    # transcript every turn (stateless), but the chosen path and the
+    # collected business profile must persist across turns.
+    stage: Mapped[str] = mapped_column(default="qualifying")
+    business_profile: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    selected_option_key: Mapped[str | None] = mapped_column(default=None)
+    # Snapshot of the ProductOptions proposed on the turn the visitor is
+    # choosing from -- select-option validates the key against this.
+    options_snapshot: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -55,6 +64,10 @@ class DiagnosisRequest(Base):
     services_of_interest: Mapped[list[str]] = mapped_column(JSON, default=list)
     budget_range: Mapped[str | None]
     timeline: Mapped[str | None]
+    # ADR-0004: the chosen path key and the full collected business profile,
+    # carried into the lead so devbutter_backend / the admin see the context.
+    selected_option_key: Mapped[str | None] = mapped_column(default=None)
+    business_profile: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
     raw_transcript_snapshot: Mapped[list[dict[str, str]] | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(default="new")
     # Simplified anti-hallucination signal (see docs/mapa-chat-widget-metricas-tokens.md
