@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+- Fluxo Cotação IA — contrato do preview em fonte única (ADR-0005, parcial):
+  `contracts/conversation_state.schema.json` é o JSON Schema do
+  `DiagnosisPreview`, regenerado por `scripts/export_conversation_schema.py`;
+  `tests/diagnosis/test_conversation_state_contract.py` falha se defasar. O
+  `devbutter_backend` parou de redeclarar essa forma (agora relaia o dict cru).
+- `DiagnosisPreview.field_options` (novo): catálogo `_OPTION_CATALOG` de
+  `services_of_interest` / `budget_range` / `timeline` como `[{id,label}]` em
+  todo preview, para o chat renderizar a etapa de review sem cópia hardcoded que
+  dessincroniza.
+- `DIAGNOSIS_SYSTEM_PROMPT` não cita mais nomes de pessoas da equipe
+  ("revisão do time da DevButter"; "Nunca cite nomes de pessoas da equipe").
 - Fluxo Cotação IA turno 2 (ADR-0004): `DiagnosisSession` passa a ter estado
   (`stage`, `business_profile`, `selected_option_key`, `options_snapshot`);
   a extração propõe 2-3 `ProductOption` precificadas (faixa/prazo em texto);
