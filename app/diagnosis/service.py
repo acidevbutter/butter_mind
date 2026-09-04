@@ -60,7 +60,8 @@ DIAGNOSIS_SYSTEM_PROMPT = (
     "Seja cordial, faça uma pergunta de cada vez, e não invente informações que o visitante "
     "não deu. Quando entender o problema e o porte do negócio (volume, canal, equipe), apresente "
     "de 2 a 3 caminhos possíveis, cada um com uma faixa de investimento e de prazo em texto "
-    "(nunca valor fechado), e deixe claro que são estimativas sujeitas à revisão do Marcos. "
+    "(nunca valor fechado), e deixe claro que são estimativas sujeitas à revisão do time da "
+    "DevButter. Nunca cite nomes de pessoas da equipe. "
     "Depois que o visitante escolher um caminho, confirme com ele os dados do negócio que "
     "faltarem (nome da empresa, segmento, quem é o contato), aceitando 'pular por agora'."
 )
