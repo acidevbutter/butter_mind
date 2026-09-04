@@ -555,6 +555,16 @@ class DiagnosisService:
             ),
         )
 
+        # Canvas 1d-1e review step edits these three fields -- ship the catalog
+        # so the browser renders one source instead of a drifting hardcoded copy.
+        field_options = {
+            field: [
+                NextStepOption(id=oid, label=label)
+                for oid, label in _OPTION_CATALOG[field]
+            ]
+            for field in ("services_of_interest", "budget_range", "timeline")
+        }
+
         return DiagnosisPreview(
             problem_summary=extraction.problem_summary,
             services_of_interest=extraction.services_of_interest,
@@ -571,6 +581,7 @@ class DiagnosisService:
             options=options,
             selected_option_key=selected_key,
             missing_fields=missing_fields,
+            field_options=field_options,
         )
 
     async def send_message(

@@ -201,6 +201,12 @@ class DiagnosisPreview(BaseModel):
     options: list[ProductOption] = Field(default_factory=list)
     selected_option_key: str | None = None
     missing_fields: list[str] = Field(default_factory=list)
+    # The fixed option catalog for the fields the review/contact step edits
+    # (canvas 1d-1e): the "serviços de interesse" checkbox group and the
+    # budget/timeline pills. Sent so the browser renders from one source
+    # instead of a hardcoded copy that drifts from _OPTION_CATALOG. Keys:
+    # "services_of_interest", "budget_range", "timeline". Always present.
+    field_options: dict[str, list[NextStepOption]] = Field(default_factory=dict)
 
 
 class DiagnosisTurnResponse(BaseModel):
