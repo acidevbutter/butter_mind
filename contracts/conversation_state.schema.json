@@ -1,0 +1,383 @@
+{
+  "$defs": {
+    "BusinessMetric": {
+      "description": "One short number the visitor stated about the business -- rendered as a\n\"números do negócio\" stat card in the live dossiê (Fluxo Cotação IA, canvas\nscreen 2a). `value` is always free text, never a real number.\n`computed=true` only when the AI derived the figure (e.g. hours/day spent on\nrepetitive replies), never for a value that was not mentioned.",
+      "properties": {
+        "computed": {
+          "default": false,
+          "title": "Computed",
+          "type": "boolean"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "value"
+      ],
+      "title": "BusinessMetric",
+      "type": "object"
+    },
+    "BusinessProfile": {
+      "description": "The structured slice of the conversation the chat surfaces live as\neditable chips while qualifying (Fluxo Cotação IA, canvas screen 1c).\nEvery field is optional -- the chip row only renders what is known.",
+      "properties": {
+        "city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "City"
+        },
+        "company_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Company Name"
+        },
+        "contact_ready": {
+          "default": false,
+          "title": "Contact Ready",
+          "type": "boolean"
+        },
+        "is_legal_entity": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Legal Entity"
+        },
+        "metrics": {
+          "items": {
+            "$ref": "#/$defs/BusinessMetric"
+          },
+          "title": "Metrics",
+          "type": "array"
+        },
+        "pain_points": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Pain Points",
+          "type": "array"
+        },
+        "scope_modules": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scope Modules",
+          "type": "array"
+        },
+        "segment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Segment"
+        },
+        "volume": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Volume"
+        }
+      },
+      "title": "BusinessProfile",
+      "type": "object"
+    },
+    "NextStep": {
+      "description": "Structured \"pick one/some of these\" block attached to a turn's preview.\nBuilt server-side from _OPTION_CATALOG -- the browser only renders it.\n`allow_free_text` stays true so the composer never disappears mid-chat.",
+      "properties": {
+        "allow_free_text": {
+          "default": true,
+          "title": "Allow Free Text",
+          "type": "boolean"
+        },
+        "field": {
+          "enum": [
+            "business_type",
+            "problem_area",
+            "services_of_interest",
+            "budget_range",
+            "timeline",
+            "none"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/NextStepOption"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "prompt": {
+          "title": "Prompt",
+          "type": "string"
+        },
+        "selection_mode": {
+          "enum": [
+            "single",
+            "multi"
+          ],
+          "title": "Selection Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "prompt",
+        "field",
+        "selection_mode",
+        "options"
+      ],
+      "title": "NextStep",
+      "type": "object"
+    },
+    "NextStepOption": {
+      "description": "One tappable option in a qualification turn. `id` is stable\n(snake_case, from _OPTION_CATALOG); `label` is the pt-BR text to render.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "title": "NextStepOption",
+      "type": "object"
+    },
+    "ProductOption": {
+      "description": "A ProductOptionDraft with the server-assigned stable key.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "price_range": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price Range"
+        },
+        "recommended": {
+          "default": false,
+          "title": "Recommended",
+          "type": "boolean"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "timeline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeline"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "summary",
+        "key"
+      ],
+      "title": "ProductOption",
+      "type": "object"
+    },
+    "QualificationProgress": {
+      "description": "\"X de N perguntas\" shown in the chat header while qualifying (canvas\nscreen 1c). `answered` counts the qualification checkpoints already\ncovered by the conversation; `total` is the fixed checkpoint count.",
+      "properties": {
+        "answered": {
+          "title": "Answered",
+          "type": "integer"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "answered",
+        "total"
+      ],
+      "title": "QualificationProgress",
+      "type": "object"
+    }
+  },
+  "description": "Safe, client-facing preview of the current diagnosis.",
+  "properties": {
+    "budget_range": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Budget Range"
+    },
+    "business_profile": {
+      "$ref": "#/$defs/BusinessProfile"
+    },
+    "field_options": {
+      "additionalProperties": {
+        "items": {
+          "$ref": "#/$defs/NextStepOption"
+        },
+        "type": "array"
+      },
+      "title": "Field Options",
+      "type": "object"
+    },
+    "grounding_status": {
+      "title": "Grounding Status",
+      "type": "string"
+    },
+    "missing_fields": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Missing Fields",
+      "type": "array"
+    },
+    "missing_information": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Missing Information",
+      "type": "array"
+    },
+    "next_step": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NextStep"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "options": {
+      "items": {
+        "$ref": "#/$defs/ProductOption"
+      },
+      "title": "Options",
+      "type": "array"
+    },
+    "problem_summary": {
+      "title": "Problem Summary",
+      "type": "string"
+    },
+    "progress": {
+      "$ref": "#/$defs/QualificationProgress"
+    },
+    "selected_option_key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Selected Option Key"
+    },
+    "services_of_interest": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Services Of Interest",
+      "type": "array"
+    },
+    "stage": {
+      "default": "qualifying",
+      "enum": [
+        "qualifying",
+        "choosing",
+        "collecting",
+        "ready"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "timeline": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Timeline"
+    }
+  },
+  "required": [
+    "problem_summary",
+    "services_of_interest",
+    "missing_information",
+    "grounding_status",
+    "progress"
+  ],
+  "title": "DiagnosisPreview",
+  "type": "object"
+}
