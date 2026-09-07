@@ -12,9 +12,9 @@ async def test_guided_flow_and_submit(client):
         reply="Entendi, me conta mais sobre o problema.",
         structured_response=ready_extraction(
             problem_summary="Cliente precisa de um site institucional novo.",
-            services_of_interest=["web-platform"],
-            budget_range="10-20k",
-            timeline="2 meses",
+            solution_kinds=["web-platform"],
+            budget_ceiling="budget_10_30k",
+            rush="time_1_3m",
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake
@@ -45,7 +45,7 @@ async def test_submit_pulls_contact_fields_from_the_extraction_itself(client):
         reply="Perfeito, vou preparar seu diagnostico.",
         structured_response=ready_extraction(
             problem_summary="Cliente precisa de uma plataforma de agendamento.",
-            services_of_interest=["platform"],
+            solution_kinds=["platform"],
             contact_name="Visitante Anonimo",
             contact_email="visitante@example.com",
             contact_phone="+5511988887777",
@@ -76,7 +76,7 @@ async def test_send_message_stream_emits_deltas_in_order_then_done(client):
         structured_response=DiagnosisExtraction(
             ready_to_submit=True,
             problem_summary="Cliente precisa de um app mobile.",
-            services_of_interest=["ai-agents"],
+            solution_kinds=["ai-agents"],
             contact_name="Fulano",
             contact_email="fulano@example.com",
         ),

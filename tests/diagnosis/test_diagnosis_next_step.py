@@ -1,27 +1,26 @@
 """Structured `next_step` options attached to a qualification turn -- see
-devbutter_app/docs/architecture/adr-0001-fluxo-cotacao-opcoes-selecionaveis.md.
+devbutter_app/docs/architecture/adr-0001-fluxo-cotacao-opcoes-selecionaveis.md
+and adr-0007-modelo-escopo-precificacao-cotacao.md (ScopingVector fields).
 """
 
 from app.core.dependencies import get_llm_provider
 from app.diagnosis.schemas import BusinessMetric, DiagnosisExtraction
-from app.diagnosis.service import _OPTION_CATALOG, _build_next_step
+from app.diagnosis.service import _SCOPING_CATALOG, _build_next_step
 from app.main import app
 from tests.factories import FakeLLMProvider
 
 
-def test_build_next_step_expands_catalog_for_services():
-    step = _build_next_step("services_of_interest", "Que solução?")
+def test_build_next_step_expands_catalog_for_solution_kinds():
+    step = _build_next_step("solution_kinds", "Que solução?")
     assert step is not None
-    assert step.field == "services_of_interest"
+    assert step.field == "solution_kinds"
     assert step.selection_mode == "multi"
     assert step.allow_free_text is True
-    assert [o.id for o in step.options] == [
-        oid for oid, _ in _OPTION_CATALOG["services_of_interest"]
-    ]
+    assert [o.id for o in step.options] == [oid for oid, _ in _SCOPING_CATALOG["solution_kinds"]]
 
 
-def test_build_next_step_single_for_non_service_fields():
-    for field in ("business_type", "problem_area", "budget_range", "timeline"):
+def test_build_next_step_single_for_non_multi_fields():
+    for field in ("business_type", "problem_area", "ai_shape", "design_load", "engagement", "rush"):
         step = _build_next_step(field, None)
         assert step is not None and step.selection_mode == "single"
         # Falls back to a canned prompt when the LLM gave none.
@@ -34,7 +33,7 @@ def test_build_next_step_none_for_unknown_or_none_field():
 
 
 def test_build_next_step_truncates_long_prompt():
-    step = _build_next_step("timeline", "p" * 500)
+    step = _build_next_step("rush", "p" * 500)
     assert step is not None and len(step.prompt) <= 160
 
 
@@ -57,8 +56,8 @@ async def test_turn_carries_next_step_options_while_not_ready(client):
         DiagnosisExtraction(
             ready_to_submit=False,
             problem_summary="Automatizar atendimento no WhatsApp.",
-            services_of_interest=[],
-            next_step_field="services_of_interest",
+            solution_kinds=[],
+            next_step_field="solution_kinds",
             next_step_prompt="Que tipo de solução você imagina?",
         ),
     )
@@ -76,7 +75,7 @@ async def test_turn_carries_business_profile_and_progress(client):
         DiagnosisExtraction(
             ready_to_submit=False,
             problem_summary="Automatizar atendimento no WhatsApp.",
-            services_of_interest=["Agente de IA"],
+            solution_kinds=["Agente de IA"],
             is_legal_entity=True,
             company_name="Loja Flor",
             business_segment="moda / varejo",
@@ -101,7 +100,7 @@ async def test_turn_carries_city_and_business_metrics(client):
         DiagnosisExtraction(
             ready_to_submit=False,
             problem_summary="Automatizar atendimento no WhatsApp.",
-            services_of_interest=["Agente de IA"],
+            solution_kinds=["Agente de IA"],
             city="Curitiba PR",
             business_metrics=[
                 BusinessMetric(label="conversas / dia", value="~150"),
@@ -125,7 +124,7 @@ async def test_business_metrics_count_toward_progress(client):
         DiagnosisExtraction(
             ready_to_submit=False,
             problem_summary="Automatizar atendimento.",
-            services_of_interest=[],
+            solution_kinds=[],
             business_metrics=[BusinessMetric(label="pedidos / mês", value="2 mil")],
         ),
     )
@@ -138,7 +137,7 @@ async def test_empty_turn_reports_zero_progress(client):
         DiagnosisExtraction(
             ready_to_submit=False,
             problem_summary="",
-            services_of_interest=[],
+            solution_kinds=[],
         ),
     )
     assert body["preview"]["progress"] == {"answered": 0, "total": 5}
@@ -152,9 +151,9 @@ async def test_ready_turn_has_no_next_step(client):
         reply="ok",
         structured_response=ready_extraction(
             problem_summary="Site institucional de 5 páginas.",
-            services_of_interest=["site institucional"],
-            next_step_field="budget_range",  # ignored once choosing/ready
-            next_step_prompt="Faixa?",
+            solution_kinds=["site institucional"],
+            next_step_field="rush",  # ignored once choosing/ready
+            next_step_prompt="Prazo?",
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake

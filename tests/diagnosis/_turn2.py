@@ -29,7 +29,9 @@ def ready_extraction(**overrides) -> DiagnosisExtraction:
     base = dict(
         ready_to_submit=True,
         problem_summary="Cliente precisa de uma solução.",
-        services_of_interest=["web-platform"],
+        solution_kinds=["web-platform"],
+        ai_shape="ai_agent",
+        surfaces=["surf_web"],
         contact_name="Fulano",
         contact_email="fulano@example.com",
         company_name="Empresa Fulano",

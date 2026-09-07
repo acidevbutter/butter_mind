@@ -6,12 +6,20 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # Fields the concierge can offer as tappable options in a qualification turn.
 # "none" means "this turn has no structured options -- just the composer".
+# ADR-0007: services_of_interest/budget_range/timeline replaced by the
+# ScopingVector dimensions that actually drive cost (see _SCOPING_CATALOG in
+# service.py). budget_range/timeline are never asked as pills anymore --
+# budget_ceiling is an optional constraint, not a question.
 NextStepField = Literal[
     "business_type",
     "problem_area",
-    "services_of_interest",
-    "budget_range",
-    "timeline",
+    "solution_kinds",
+    "integrations",
+    "surfaces",
+    "ai_shape",
+    "design_load",
+    "engagement",
+    "rush",
     "none",
 ]
 
@@ -19,8 +27,18 @@ NextStepField = Literal[
 # stage deterministically from state -- it is not something the LLM decides.
 DiagnosisStage = Literal["qualifying", "choosing", "collecting", "ready"]
 
-# Business-profile keys required before stage can become "ready".
-REQUIRED_PROFILE_FIELDS = ("business_name", "segment", "contact_name")
+# Business-profile keys required before stage can become "ready". The three
+# ScopingVector dimensions are the minimum needed for a price to make sense
+# (ADR-0007) -- merged into the same effective-profile dict in service.py's
+# _extraction_profile, even though they don't live on BusinessProfile.
+REQUIRED_PROFILE_FIELDS = (
+    "business_name",
+    "segment",
+    "contact_name",
+    "solution_kinds",
+    "ai_shape",
+    "surfaces",
+)
 
 
 class ProductOptionDraft(BaseModel):
@@ -80,6 +98,32 @@ class DiagnosisMessageRead(BaseModel):
     created_at: datetime
 
 
+class ScopingVector(BaseModel):
+    """The real cost drivers of a request (ADR-0007), replacing the weak
+    services_of_interest/budget_range/timeline proxies. One field per
+    dimension of `_SCOPING_CATALOG` (service.py) -- ids are catalog-stable
+    snake_case, never free text. Every field is optional: the vector fills in
+    incrementally as the conversation (or a next_step pill tap) reveals it.
+    Not persisted yet (ADR-0007 slice 02) -- recomputed each turn from the
+    extraction, like BusinessProfile.
+    """
+
+    solution_kinds: list[str] = Field(default_factory=list)
+    integrations: list[str] = Field(default_factory=list)
+    surfaces: list[str] = Field(default_factory=list)
+    ai_shape: str | None = None
+    data_mode: str | None = None
+    auth_mode: str | None = None
+    novelty: str | None = None
+    design_load: str | None = None
+    compliance: list[str] = Field(default_factory=list)
+    engagement: str | None = None
+    rush: str | None = None
+    # Optional "teto que você tem em mente" constraint -- never a question the
+    # concierge asks, unlike the old budget_range pill.
+    budget_ceiling: str | None = None
+
+
 class DiagnosisExtraction(BaseModel):
     """Structured extraction the LLM produces once enough of the conversation
     has been gathered — consumed by DiagnosisService, never exposed raw via the API.
@@ -95,9 +139,22 @@ class DiagnosisExtraction(BaseModel):
 
     ready_to_submit: bool
     problem_summary: str
-    services_of_interest: list[str]
-    budget_range: str | None = None
-    timeline: str | None = None
+    # ScopingVector dimensions (ADR-0007), flat here like the rest of this
+    # schema -- re-extracted from the full transcript every turn, same as a
+    # pill answer used to fill services_of_interest before. DiagnosisService.
+    # _preview assembles these into a ScopingVector for DiagnosisPreview.
+    solution_kinds: list[str] = Field(default_factory=list)
+    integrations: list[str] = Field(default_factory=list)
+    surfaces: list[str] = Field(default_factory=list)
+    ai_shape: str | None = None
+    data_mode: str | None = None
+    auth_mode: str | None = None
+    novelty: str | None = None
+    design_load: str | None = None
+    compliance: list[str] = Field(default_factory=list)
+    engagement: str | None = None
+    rush: str | None = None
+    budget_ceiling: str | None = None
     contact_name: str | None = None
     contact_email: str | None = None
     contact_phone: str | None = None
@@ -123,7 +180,7 @@ class DiagnosisExtraction(BaseModel):
     # Which field the concierge should collect next as tappable options, and a
     # short question to show above them. The option list itself is NOT taken
     # from the LLM -- DiagnosisService expands `next_step_field` against a fixed
-    # catalog (see _OPTION_CATALOG) so ids/labels stay stable and the extraction
+    # catalog (see _SCOPING_CATALOG) so ids/labels stay stable and the extraction
     # schema stays small. "none" while the conversation still flows freely.
     next_step_field: NextStepField = "none"
     next_step_prompt: str | None = None
@@ -135,7 +192,7 @@ class DiagnosisExtraction(BaseModel):
 
 class NextStepOption(BaseModel):
     """One tappable option in a qualification turn. `id` is stable
-    (snake_case, from _OPTION_CATALOG); `label` is the pt-BR text to render."""
+    (snake_case, from _SCOPING_CATALOG); `label` is the pt-BR text to render."""
 
     id: str
     label: str
@@ -143,7 +200,7 @@ class NextStepOption(BaseModel):
 
 class NextStep(BaseModel):
     """Structured "pick one/some of these" block attached to a turn's preview.
-    Built server-side from _OPTION_CATALOG -- the browser only renders it.
+    Built server-side from _SCOPING_CATALOG -- the browser only renders it.
     `allow_free_text` stays true so the composer never disappears mid-chat."""
 
     prompt: str
@@ -182,7 +239,13 @@ class DiagnosisPreview(BaseModel):
     """Safe, client-facing preview of the current diagnosis."""
 
     problem_summary: str
-    services_of_interest: list[str]
+    # ADR-0007: renamed from services_of_interest -- a light label taxonomy,
+    # kept for display; the real cost drivers live in `scoping_vector`.
+    solution_kinds: list[str]
+    # budget_range/timeline stay named this way for the client (draft-quote
+    # overrides, dossiê stat cards) but now mirror the chosen option's
+    # figures, or the ScopingVector's budget_ceiling/rush labels -- never a
+    # question answered directly (ADR-0007).
     budget_range: str | None = None
     timeline: str | None = None
     missing_information: list[str]
@@ -201,11 +264,17 @@ class DiagnosisPreview(BaseModel):
     options: list[ProductOption] = Field(default_factory=list)
     selected_option_key: str | None = None
     missing_fields: list[str] = Field(default_factory=list)
-    # The fixed option catalog for the fields the review/contact step edits
-    # (canvas 1d-1e): the "serviços de interesse" checkbox group and the
-    # budget/timeline pills. Sent so the browser renders from one source
-    # instead of a hardcoded copy that drifts from _OPTION_CATALOG. Keys:
-    # "services_of_interest", "budget_range", "timeline". Always present.
+    # ADR-0007: the full structured scope, recomputed from the extraction
+    # every turn (not persisted until slice 02). solution_kinds/budget_range/
+    # timeline above are the display-friendly slices of this same vector.
+    scoping_vector: ScopingVector = Field(default_factory=ScopingVector)
+    # The fixed option catalog for every _SCOPING_CATALOG dimension (plus the
+    # business_type/problem_area warm-up questions). Sent so the browser
+    # renders from one source instead of a hardcoded copy that drifts from
+    # _SCOPING_CATALOG. Keys match ScopingVector's field names (solution_kinds,
+    # integrations, surfaces, ai_shape, data_mode, auth_mode, novelty,
+    # design_load, compliance, engagement, rush, budget_ceiling) plus
+    # business_type/problem_area. Always present.
     field_options: dict[str, list[NextStepOption]] = Field(default_factory=dict)
 
 

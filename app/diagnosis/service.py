@@ -38,6 +38,7 @@ from app.diagnosis.schemas import (
     ProductOption,
     ProductOptionDraft,
     QualificationProgress,
+    ScopingVector,
 )
 from app.knowledge.models import KnowledgeChunk
 from app.knowledge.service import KnowledgeIngestionService
@@ -73,29 +74,173 @@ GROUNDING_INSTRUCTION = (
     "vez de inventar um valor ou prazo."
 )
 
-# Bump when the extraction prompt or _OPTION_CATALOG changes -- lets an admin
+# Bump when the extraction prompt or _SCOPING_CATALOG changes -- lets an admin
 # view correlate extraction quality with a prompt revision (see
 # devbutter_app/docs/architecture/ai-quote-recommended-flow.md, "Métricas
 # mínimas por etapa": prompt_version).
-EXTRACTION_PROMPT_VERSION = "2026-09-02-product-options"
+EXTRACTION_PROMPT_VERSION = "2026-09-05-scoping-vector"
+
+# Fixed catalog for every field the concierge can offer as tappable options,
+# plus the review step's editable groups (ADR-0007). The LLM only picks WHICH
+# field to ask next (next_step_field) or which ids apply (ScopingVector); the
+# ids/labels below are the single source of truth, so the browser and the
+# persisted transcript never see a drifting label. Order here is the render
+# order. pt-BR labels, <= 32 chars. business_type/problem_area are warm-up
+# questions (not cost drivers) kept in the same catalog for one lookup path.
+_SCOPING_CATALOG: dict[str, list[tuple[str, str]]] = {
+    "business_type": [
+        ("biz_ecommerce", "Loja / e-commerce"),
+        ("biz_saas", "SaaS / plataforma"),
+        ("biz_services", "Prestação de serviços"),
+        ("biz_industry", "Indústria / varejo"),
+        ("biz_startup", "Startup em validação"),
+        ("biz_other", "Outro"),
+    ],
+    "problem_area": [
+        ("prob_support", "Atendimento / suporte"),
+        ("prob_sales", "Vendas / geração de leads"),
+        ("prob_ops", "Operação / processos internos"),
+        ("prob_data", "Dados / relatórios"),
+        ("prob_product", "Produto digital novo"),
+        ("prob_integration", "Integração entre sistemas"),
+    ],
+    "solution_kinds": [
+        ("svc_ai_agent", "Agente de IA"),
+        ("svc_automation", "Automação de processos"),
+        ("svc_platform", "Plataforma web / SaaS"),
+        ("svc_ecommerce", "E-commerce"),
+        ("svc_website", "Site institucional"),
+        ("svc_data", "Dados / analytics"),
+    ],
+    "integrations": [
+        ("int_none", "Nenhuma integração"),
+        ("int_few", "1–2 integrações simples"),
+        ("int_several", "3–5 integrações"),
+        ("int_complex", "Sistema legado / ERP"),
+    ],
+    "surfaces": [
+        ("surf_web", "Web (site/app web)"),
+        ("surf_whatsapp", "WhatsApp"),
+        ("surf_mobile", "App mobile nativo"),
+        ("surf_internal", "Painel interno"),
+        ("surf_api", "Só API / backend"),
+    ],
+    "ai_shape": [
+        ("ai_none", "Sem IA"),
+        ("ai_retrieval", "IA com busca (RAG)"),
+        ("ai_agent", "Agente com ferramentas"),
+        ("ai_custom", "Treino/avaliação sob medida"),
+    ],
+    "data_mode": [
+        ("data_none", "Sem dado próprio"),
+        ("data_existing", "Usa dado/sistema existente"),
+        ("data_new", "Cria base de dados nova"),
+        ("data_migration", "Migração de dados"),
+    ],
+    "auth_mode": [
+        ("auth_none", "Sem login"),
+        ("auth_single", "Login simples (1 papel)"),
+        ("auth_multi_role", "Múltiplos papéis"),
+        ("auth_multi_tenant", "Multi-tenant"),
+    ],
+    "novelty": [
+        ("nov_standard", "Solução padrão, já feita"),
+        ("nov_adapted", "Adaptação do conhecido"),
+        ("nov_novel", "Novo / P&D"),
+    ],
+    "design_load": [
+        ("design_none", "Sem design (usa padrão)"),
+        ("design_light", "Design leve (poucas telas)"),
+        ("design_full", "Design completo"),
+    ],
+    "compliance": [
+        ("comp_none", "Nenhuma exigência específica"),
+        ("comp_lgpd", "LGPD / dados pessoais"),
+        ("comp_financial", "Regulação financeira"),
+        ("comp_health", "Dados de saúde"),
+    ],
+    "engagement": [
+        ("eng_project", "Projeto pontual"),
+        ("eng_retainer", "Suporte/evolução contínua"),
+    ],
+    "rush": [
+        ("time_asap", "O quanto antes"),
+        ("time_1_3m", "1–3 meses"),
+        ("time_3_6m", "3–6 meses"),
+        ("time_flexible", "Sem prazo fixo"),
+    ],
+    "budget_ceiling": [
+        ("budget_lt_10k", "Até R$ 10 mil"),
+        ("budget_10_30k", "R$ 10–30 mil"),
+        ("budget_30_80k", "R$ 30–80 mil"),
+        ("budget_gt_80k", "Acima de R$ 80 mil"),
+        ("budget_unsure", "Ainda não sei"),
+    ],
+}
+
+# ScopingVector dimensions that accept more than one id at once -- everything
+# else in _SCOPING_CATALOG is single-select.
+_MULTI_SELECTION_FIELDS = {"solution_kinds", "integrations", "surfaces", "compliance"}
+
+# The ScopingVector dimensions the extraction prompt must fill (excludes the
+# business_type/problem_area warm-up questions, which aren't extraction
+# fields -- their answers fold into business_segment/pain_points instead).
+_SCOPING_VECTOR_FIELDS = (
+    "solution_kinds",
+    "integrations",
+    "surfaces",
+    "ai_shape",
+    "data_mode",
+    "auth_mode",
+    "novelty",
+    "design_load",
+    "compliance",
+    "engagement",
+    "rush",
+    "budget_ceiling",
+)
+
+
+def _scoping_ids_hint() -> str:
+    """pt-BR appendix listing every ScopingVector dimension's valid catalog
+    ids (id=rótulo) -- generated from _SCOPING_CATALOG so the extraction
+    prompt can never drift from it. The LLM must output the id, never the
+    label, so the vector stays catalog-stable (ADR-0007)."""
+    parts = []
+    for field in _SCOPING_VECTOR_FIELDS:
+        arity = "lista de ids" if field in _MULTI_SELECTION_FIELDS else "1 id"
+        ids = ", ".join(f"{oid}={label}" for oid, label in _SCOPING_CATALOG[field])
+        parts.append(f"{field} ({arity}): {ids}")
+    return " | ".join(parts)
+
 
 EXTRACTION_SYSTEM_PROMPT = (
     "Analise a conversa entre um visitante e o assistente de diagnóstico da DevButter. "
-    "Extraia os campos estruturados pedidos: resumo do problema, serviços de interesse, faixa de "
-    "orçamento, prazo, e os dados de contato que o visitante tiver compartilhado (contact_name, "
+    "Extraia os campos estruturados pedidos: resumo do problema, os campos do vetor de escopo "
+    "abaixo, e os dados de contato que o visitante tiver compartilhado (contact_name, "
     "contact_email, contact_phone, company_name, cnpj) -- extraia-os exatamente como o visitante "
     "escreveu, sem inventar ou completar dados que não foram ditos. Marque ready_to_submit=true "
     "somente se já houver informação suficiente para descrever o problema do visitante, ao menos "
-    "um serviço de interesse, E contact_name e contact_email; caso qualquer um desses falte, "
+    "um item em solution_kinds, E contact_name e contact_email; caso qualquer um desses falte, "
     "ready_to_submit=false. "
+    "Vetor de escopo -- preencha cada dimensão só com o que foi dito, nunca invente ou complete. "
+    "Para cada dimensão, use exatamente um dos ids listados (a parte antes do '=') -- NUNCA "
+    "escreva o rótulo por extenso, NUNCA invente um id que não esteja na lista. Campos marcados "
+    "'lista de ids' aceitam vários; os demais aceitam só um. Deixe null (ou lista vazia) a "
+    "dimensão que a conversa não tocou: "
+    f"{_scoping_ids_hint()}. budget_ceiling só se o visitante voluntariamente mencionar um teto de "
+    "investimento -- NUNCA pergunte por isso, é opcional. "
     "Enquanto ready_to_submit=false, escolha em next_step_field qual informação faz mais sentido "
     "coletar no próximo passo, oferecendo opções para o visitante tocar: 'business_type' (que "
-    "tipo de negócio), 'problem_area' (que área o problema afeta), 'services_of_interest' (que "
-    "serviço a DevButter faria), 'budget_range' (faixa de investimento) ou 'timeline' (prazo). "
-    "Prefira a informação que ainda está vazia ou vaga. Em next_step_prompt escreva uma pergunta "
-    "curta em português (até ~90 caracteres) para aparecer acima das opções. Se a conversa não "
-    "comporta opções fechadas agora, use next_step_field='none'. Quando ready_to_submit=true, "
-    "sempre use next_step_field='none'. Não invente rótulos de opção -- só escolha o campo. "
+    "tipo de negócio), 'problem_area' (que área o problema afeta), 'solution_kinds' (que tipo de "
+    "solução), 'integrations' (com que sistemas integra), 'surfaces' (em que canal roda), "
+    "'ai_shape' (que forma de IA), 'design_load' (quanto de design/telas precisa), 'engagement' "
+    "(projeto pontual ou suporte contínuo) ou 'rush' (prazo desejado). Nunca escolha um campo "
+    "para perguntar orçamento -- budget_ceiling não é pergunta. Prefira a informação que ainda "
+    "está vazia ou vaga. Em next_step_prompt escreva uma pergunta curta em português (até ~90 "
+    "caracteres) para aparecer acima das opções. Se a conversa não comporta opções fechadas "
+    "agora, use next_step_field='none'. Quando ready_to_submit=true, sempre use "
+    "next_step_field='none'. Não invente rótulos de opção -- só escolha o campo. "
     "Preencha também o perfil do negócio conforme a conversa revela, sem inventar: "
     "is_legal_entity=true se o visitante fala em nome de uma empresa/CNPJ, false se é para uso "
     "pessoal, null se ainda não deu para saber; business_segment (ex.: 'moda / varejo', "
@@ -118,73 +263,45 @@ EXTRACTION_SYSTEM_PROMPT = (
     "deixe proposed_options vazio."
 )
 
-# Fixed option catalog. The LLM only picks WHICH field to ask next
-# (next_step_field); the option ids/labels below are the single source of truth,
-# so the browser and the persisted transcript never see a drifting label. Order
-# here is the render order. pt-BR labels, <= 32 chars.
-_OPTION_CATALOG: dict[str, list[tuple[str, str]]] = {
-    "business_type": [
-        ("biz_ecommerce", "Loja / e-commerce"),
-        ("biz_saas", "SaaS / plataforma"),
-        ("biz_services", "Prestação de serviços"),
-        ("biz_industry", "Indústria / varejo"),
-        ("biz_startup", "Startup em validação"),
-        ("biz_other", "Outro"),
-    ],
-    "problem_area": [
-        ("prob_support", "Atendimento / suporte"),
-        ("prob_sales", "Vendas / geração de leads"),
-        ("prob_ops", "Operação / processos internos"),
-        ("prob_data", "Dados / relatórios"),
-        ("prob_product", "Produto digital novo"),
-        ("prob_integration", "Integração entre sistemas"),
-    ],
-    "services_of_interest": [
-        ("svc_ai_agent", "Agente de IA"),
-        ("svc_automation", "Automação de processos"),
-        ("svc_platform", "Plataforma web / SaaS"),
-        ("svc_ecommerce", "E-commerce"),
-        ("svc_website", "Site institucional"),
-        ("svc_data", "Dados / analytics"),
-    ],
-    "budget_range": [
-        ("budget_lt_10k", "Até R$ 10 mil"),
-        ("budget_10_30k", "R$ 10–30 mil"),
-        ("budget_30_80k", "R$ 30–80 mil"),
-        ("budget_gt_80k", "Acima de R$ 80 mil"),
-        ("budget_unsure", "Ainda não sei"),
-    ],
-    "timeline": [
-        ("time_asap", "O quanto antes"),
-        ("time_1_3m", "1–3 meses"),
-        ("time_3_6m", "3–6 meses"),
-        ("time_flexible", "Sem prazo fixo"),
-    ],
-}
-
 _DEFAULT_NEXT_STEP_PROMPT: dict[str, str] = {
     "business_type": "Que tipo de negócio é o seu?",
     "problem_area": "Onde esse problema mais pesa hoje?",
-    "services_of_interest": "Que tipo de solução você imagina? (pode marcar mais de uma)",
-    "budget_range": "Tem uma faixa de investimento em mente?",
-    "timeline": "Qual o prazo que você tem em mente?",
+    "solution_kinds": "Que tipo de solução você imagina? (pode marcar mais de uma)",
+    "integrations": "Com quais sistemas isso precisa conversar?",
+    "surfaces": "Onde essa solução deve rodar? (pode marcar mais de uma)",
+    "ai_shape": "Que papel a IA deve ter aqui?",
+    "design_load": "Quanto de design/telas isso exige?",
+    "engagement": "Isso é um projeto pontual ou você quer suporte contínuo?",
+    "rush": "Qual o prazo que você tem em mente?",
 }
 
 _MAX_NEXT_STEP_PROMPT_CHARS = 160
 
 
+def _catalog_label(field: str, option_id: str | None) -> str | None:
+    """Human label for a single catalog id -- used to render budget_ceiling/
+    rush ids as the free-text budget_range/timeline the client already
+    expects (ADR-0007 keeps those two preview field names for now)."""
+    if not option_id:
+        return None
+    for oid, label in _SCOPING_CATALOG.get(field, []):
+        if oid == option_id:
+            return label
+    return option_id
+
+
 def _build_next_step(field: str, prompt: str | None) -> NextStep | None:
-    """Expand the LLM's chosen field into a full NextStep from _OPTION_CATALOG.
-    Returns None for 'none', an unknown field, or a catalog entry with < 2
-    options -- callers then just render the composer."""
-    options = _OPTION_CATALOG.get(field)
+    """Expand the LLM's chosen field into a full NextStep from
+    _SCOPING_CATALOG. Returns None for 'none', an unknown field, or a catalog
+    entry with < 2 options -- callers then just render the composer."""
+    options = _SCOPING_CATALOG.get(field)
     if not options or len(options) < 2:
         return None
     text = (prompt or "").strip() or _DEFAULT_NEXT_STEP_PROMPT[field]
     return NextStep(
         prompt=text[:_MAX_NEXT_STEP_PROMPT_CHARS],
         field=cast(NextStepField, field),
-        selection_mode="multi" if field == "services_of_interest" else "single",
+        selection_mode="multi" if field in _MULTI_SELECTION_FIELDS else "single",
         allow_free_text=True,
         options=[NextStepOption(id=oid, label=label) for oid, label in options],
     )
@@ -241,7 +358,10 @@ def _sanitize_options(drafts: list[ProductOptionDraft]) -> list[ProductOption]:
 
 def _extraction_profile(extraction: DiagnosisExtraction) -> dict[str, object]:
     """The business-profile fields butter_mind can infer from the transcript
-    this turn (recomputed every turn -- stateless)."""
+    this turn (recomputed every turn -- stateless). Also carries the three
+    ScopingVector dimensions REQUIRED_PROFILE_FIELDS treats as the minimum for
+    a price to make sense (ADR-0007) -- they aren't BusinessProfile fields,
+    but _missing_profile_fields works on any flat dict."""
     return {
         "business_name": extraction.company_name,
         "segment": extraction.business_segment,
@@ -250,6 +370,9 @@ def _extraction_profile(extraction: DiagnosisExtraction) -> dict[str, object]:
         "contact_name": extraction.contact_name,
         "contact_email": extraction.contact_email,
         "contact_phone": extraction.contact_phone,
+        "solution_kinds": extraction.solution_kinds,
+        "ai_shape": extraction.ai_shape,
+        "surfaces": extraction.surfaces,
     }
 
 
@@ -508,8 +631,8 @@ class DiagnosisService:
         missing_information: list[str] = []
         if not extraction.problem_summary.strip():
             missing_information.append("descrever o problema ou objetivo")
-        if not extraction.services_of_interest:
-            missing_information.append("identificar ao menos um serviço de interesse")
+        if not extraction.solution_kinds:
+            missing_information.append("identificar ao menos um tipo de solução")
         if not (effective_profile.get("contact_name") or ""):
             missing_information.append("nome")
         if not (effective_profile.get("contact_email") or ""):
@@ -534,8 +657,8 @@ class DiagnosisService:
             bool(extraction.daily_volume)
             or bool(extraction.pain_points)
             or bool(extraction.business_metrics),
-            bool(extraction.services_of_interest) or bool(extraction.scope_modules),
-            bool(extraction.budget_range) or bool(extraction.timeline),
+            bool(extraction.solution_kinds) or bool(extraction.scope_modules),
+            bool(extraction.budget_ceiling) or bool(extraction.rush),
         ]
         metrics = list(extraction.business_metrics)
         session_metrics = session_profile.get("metrics")
@@ -549,29 +672,48 @@ class DiagnosisService:
             volume=cast(str | None, effective_profile.get("volume")),
             metrics=metrics,
             pain_points=extraction.pain_points,
-            scope_modules=extraction.scope_modules or extraction.services_of_interest,
+            scope_modules=extraction.scope_modules or extraction.solution_kinds,
             contact_ready=bool(
                 effective_profile.get("contact_name") and effective_profile.get("contact_email")
             ),
         )
 
-        # Canvas 1d-1e review step edits these three fields -- ship the catalog
-        # so the browser renders one source instead of a drifting hardcoded copy.
+        scoping_vector = ScopingVector(
+            solution_kinds=extraction.solution_kinds,
+            integrations=extraction.integrations,
+            surfaces=extraction.surfaces,
+            ai_shape=extraction.ai_shape,
+            data_mode=extraction.data_mode,
+            auth_mode=extraction.auth_mode,
+            novelty=extraction.novelty,
+            design_load=extraction.design_load,
+            compliance=extraction.compliance,
+            engagement=extraction.engagement,
+            rush=extraction.rush,
+            budget_ceiling=extraction.budget_ceiling,
+        )
+
+        # Canvas 1d-1e review step + next_step pills edit these fields -- ship
+        # the whole catalog so the browser renders one source instead of a
+        # drifting hardcoded copy (ADR-0007).
         field_options = {
-            field: [
-                NextStepOption(id=oid, label=label)
-                for oid, label in _OPTION_CATALOG[field]
-            ]
-            for field in ("services_of_interest", "budget_range", "timeline")
+            field: [NextStepOption(id=oid, label=label) for oid, label in options]
+            for field, options in _SCOPING_CATALOG.items()
         }
 
         return DiagnosisPreview(
             problem_summary=extraction.problem_summary,
-            services_of_interest=extraction.services_of_interest,
+            solution_kinds=extraction.solution_kinds,
             budget_range=(
-                options[0].price_range if selected_key and options else extraction.budget_range
+                options[0].price_range
+                if selected_key and options
+                else _catalog_label("budget_ceiling", extraction.budget_ceiling)
             ),
-            timeline=(options[0].timeline if selected_key and options else extraction.timeline),
+            timeline=(
+                options[0].timeline
+                if selected_key and options
+                else _catalog_label("rush", extraction.rush)
+            ),
             missing_information=missing_information,
             grounding_status="grounded" if grounded else "unavailable",
             next_step=next_step,
@@ -581,6 +723,7 @@ class DiagnosisService:
             options=options,
             selected_option_key=selected_key,
             missing_fields=missing_fields,
+            scoping_vector=scoping_vector,
             field_options=field_options,
         )
 
@@ -864,7 +1007,9 @@ class DiagnosisService:
             company_name=cast(str | None, effective.get("business_name")),
             cnpj=extraction.cnpj,
             problem_summary=extraction.problem_summary,
-            services_of_interest=extraction.services_of_interest,
+            # DB column keeps its ADR-0005-era name (no migration in slice 01
+            # -- ADR-0007); solution_kinds is its ScopingVector source now.
+            services_of_interest=extraction.solution_kinds,
             budget_range=preview.budget_range,
             timeline=preview.timeline,
             selected_option_key=diagnosis_session.selected_option_key,

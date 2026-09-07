@@ -118,7 +118,7 @@
       "type": "object"
     },
     "NextStep": {
-      "description": "Structured \"pick one/some of these\" block attached to a turn's preview.\nBuilt server-side from _OPTION_CATALOG -- the browser only renders it.\n`allow_free_text` stays true so the composer never disappears mid-chat.",
+      "description": "Structured \"pick one/some of these\" block attached to a turn's preview.\nBuilt server-side from _SCOPING_CATALOG -- the browser only renders it.\n`allow_free_text` stays true so the composer never disappears mid-chat.",
       "properties": {
         "allow_free_text": {
           "default": true,
@@ -129,9 +129,13 @@
           "enum": [
             "business_type",
             "problem_area",
-            "services_of_interest",
-            "budget_range",
-            "timeline",
+            "solution_kinds",
+            "integrations",
+            "surfaces",
+            "ai_shape",
+            "design_load",
+            "engagement",
+            "rush",
             "none"
           ],
           "title": "Field",
@@ -167,7 +171,7 @@
       "type": "object"
     },
     "NextStepOption": {
-      "description": "One tappable option in a qualification turn. `id` is stable\n(snake_case, from _OPTION_CATALOG); `label` is the pt-BR text to render.",
+      "description": "One tappable option in a qualification turn. `id` is stable\n(snake_case, from _SCOPING_CATALOG); `label` is the pt-BR text to render.",
       "properties": {
         "id": {
           "title": "Id",
@@ -256,6 +260,137 @@
       ],
       "title": "QualificationProgress",
       "type": "object"
+    },
+    "ScopingVector": {
+      "description": "The real cost drivers of a request (ADR-0007), replacing the weak\nservices_of_interest/budget_range/timeline proxies. One field per\ndimension of `_SCOPING_CATALOG` (service.py) -- ids are catalog-stable\nsnake_case, never free text. Every field is optional: the vector fills in\nincrementally as the conversation (or a next_step pill tap) reveals it.\nNot persisted yet (ADR-0007 slice 02) -- recomputed each turn from the\nextraction, like BusinessProfile.",
+      "properties": {
+        "ai_shape": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ai Shape"
+        },
+        "auth_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Auth Mode"
+        },
+        "budget_ceiling": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Budget Ceiling"
+        },
+        "compliance": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Compliance",
+          "type": "array"
+        },
+        "data_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Data Mode"
+        },
+        "design_load": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Design Load"
+        },
+        "engagement": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engagement"
+        },
+        "integrations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Integrations",
+          "type": "array"
+        },
+        "novelty": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Novelty"
+        },
+        "rush": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rush"
+        },
+        "solution_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Solution Kinds",
+          "type": "array"
+        },
+        "surfaces": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Surfaces",
+          "type": "array"
+        }
+      },
+      "title": "ScopingVector",
+      "type": "object"
     }
   },
   "description": "Safe, client-facing preview of the current diagnosis.",
@@ -328,6 +463,9 @@
     "progress": {
       "$ref": "#/$defs/QualificationProgress"
     },
+    "scoping_vector": {
+      "$ref": "#/$defs/ScopingVector"
+    },
     "selected_option_key": {
       "anyOf": [
         {
@@ -340,11 +478,11 @@
       "default": null,
       "title": "Selected Option Key"
     },
-    "services_of_interest": {
+    "solution_kinds": {
       "items": {
         "type": "string"
       },
-      "title": "Services Of Interest",
+      "title": "Solution Kinds",
       "type": "array"
     },
     "stage": {
@@ -373,7 +511,7 @@
   },
   "required": [
     "problem_summary",
-    "services_of_interest",
+    "solution_kinds",
     "missing_information",
     "grounding_status",
     "progress"

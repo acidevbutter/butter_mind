@@ -20,7 +20,7 @@ HEADER = "X-Service-Api-Key"
 _EMPTY_EXTRACTION = DiagnosisExtraction(
     ready_to_submit=False,
     problem_summary="",
-    services_of_interest=[],
+    solution_kinds=[],
 )
 
 

@@ -10,7 +10,7 @@ async def test_internal_dashboard_aggregates_turn_metrics_and_persists_governanc
         structured_response=DiagnosisExtraction(
             ready_to_submit=False,
             problem_summary="Precisa de um site",
-            services_of_interest=["web"],
+            solution_kinds=["web"],
         ),
     )
     app.dependency_overrides[require_internal_api_key] = lambda: None

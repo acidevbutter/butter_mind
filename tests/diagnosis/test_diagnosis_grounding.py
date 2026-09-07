@@ -37,7 +37,7 @@ async def test_send_message_grounds_reply_with_retrieved_chunks_and_records_metr
         structured_response=DiagnosisExtraction(
             ready_to_submit=False,
             problem_summary="Quer um site institucional.",
-            services_of_interest=["web-platform"],
+            solution_kinds=["web-platform"],
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake_llm
@@ -70,7 +70,7 @@ async def test_send_message_without_any_knowledge_content_grounds_nothing(client
     fake_llm = FakeLLMProvider(
         reply="ok",
         structured_response=DiagnosisExtraction(
-            ready_to_submit=False, problem_summary="x", services_of_interest=[]
+            ready_to_submit=False, problem_summary="x", solution_kinds=[]
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake_llm
@@ -90,7 +90,7 @@ async def test_send_message_uses_the_fixed_configured_max_tokens(client, monkeyp
     fake_llm = FakeLLMProvider(
         reply="ok",
         structured_response=DiagnosisExtraction(
-            ready_to_submit=False, problem_summary="x", services_of_interest=[]
+            ready_to_submit=False, problem_summary="x", solution_kinds=[]
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake_llm
@@ -107,7 +107,7 @@ async def test_send_message_bounds_history_to_the_configured_window(client, monk
     fake_llm = FakeLLMProvider(
         reply="ok",
         structured_response=DiagnosisExtraction(
-            ready_to_submit=False, problem_summary="x", services_of_interest=[]
+            ready_to_submit=False, problem_summary="x", solution_kinds=[]
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake_llm
@@ -133,7 +133,7 @@ async def test_send_message_blocks_once_the_turn_cap_is_reached(client, monkeypa
     fake_llm = FakeLLMProvider(
         reply="ok",
         structured_response=DiagnosisExtraction(
-            ready_to_submit=False, problem_summary="x", services_of_interest=[]
+            ready_to_submit=False, problem_summary="x", solution_kinds=[]
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake_llm
@@ -159,7 +159,7 @@ async def test_stream_message_emits_an_error_event_once_the_turn_cap_is_reached(
     fake_llm = FakeLLMProvider(
         stream_deltas=["ok"],
         structured_response=DiagnosisExtraction(
-            ready_to_submit=False, problem_summary="x", services_of_interest=[]
+            ready_to_submit=False, problem_summary="x", solution_kinds=[]
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake_llm
@@ -187,7 +187,7 @@ async def test_submit_flags_possibly_ungrounded_when_no_turn_ever_retrieved_a_ch
     fake_llm = FakeLLMProvider(
         reply="ok",
         structured_response=ready_extraction(
-            problem_summary="Quer um app.", services_of_interest=["ai-agents"]
+            problem_summary="Quer um app.", solution_kinds=["ai-agents"]
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake_llm
@@ -210,7 +210,7 @@ async def test_submit_does_not_flag_possibly_ungrounded_when_a_turn_retrieved_a_
     fake_llm = FakeLLMProvider(
         reply="ok",
         structured_response=ready_extraction(
-            problem_summary="Quer um agente de IA.", services_of_interest=["ai-agents"]
+            problem_summary="Quer um agente de IA.", solution_kinds=["ai-agents"]
         ),
     )
     app.dependency_overrides[get_llm_provider] = lambda: fake_llm

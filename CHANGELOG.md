@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Adicionada `docs/API_SPEC.md`: mapa de rotas, chaves de serviço/interna e
+  contratos de integração do Mind.
+
 - Fluxo Cotação IA — contrato do preview em fonte única (ADR-0005, parcial):
   `contracts/conversation_state.schema.json` é o JSON Schema do
   `DiagnosisPreview`, regenerado por `scripts/export_conversation_schema.py`;
