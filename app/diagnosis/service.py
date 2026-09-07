@@ -355,6 +355,7 @@ class DiagnosisService:
             uses_runtime_override=override is not None,
             maritaca_model=settings.maritaca_model,
             embeddings_model_name=settings.embeddings_model_name,
+            rag_enabled=settings.rag_enabled,
         )
 
     async def update_governance(
