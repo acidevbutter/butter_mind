@@ -290,6 +290,7 @@ class DiagnosisGovernanceRead(BaseModel):
     uses_runtime_override: bool
     maritaca_model: str
     embeddings_model_name: str
+    rag_enabled: bool
 
 
 class DiagnosisGovernanceUpdate(BaseModel):
