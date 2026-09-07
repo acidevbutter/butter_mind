@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Cotação IA: `ready` exige e-mail (e problema + serviço) além do perfil;
+  `_sanitize_options` marca `recommended` na opção efetivamente mantida;
+  `options_snapshot` é limpo ao voltar para `qualifying`.
 - Fluxo Cotação IA turno 2 (ADR-0004): `DiagnosisSession` passa a ter estado
   (`stage`, `business_profile`, `selected_option_key`, `options_snapshot`);
   a extração propõe 2-3 `ProductOption` precificadas (faixa/prazo em texto);
