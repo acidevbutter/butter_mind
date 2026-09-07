@@ -27,8 +27,9 @@ async def _ingest_chunk(db_session, text: str) -> None:
 
 
 async def test_send_message_grounds_reply_with_retrieved_chunks_and_records_metrics(
-    client, db_session
+    client, db_session, monkeypatch
 ):
+    monkeypatch.setattr(settings, "rag_enabled", True)
     chunk_text = "Site institucional simples custa entre R$ 8.000 e R$ 12.000."
     await _ingest_chunk(db_session, chunk_text)
 
@@ -202,8 +203,9 @@ async def test_submit_flags_possibly_ungrounded_when_no_turn_ever_retrieved_a_ch
 
 
 async def test_submit_does_not_flag_possibly_ungrounded_when_a_turn_retrieved_a_chunk(
-    client, db_session
+    client, db_session, monkeypatch
 ):
+    monkeypatch.setattr(settings, "rag_enabled", True)
     chunk_text = "Agente de IA para atendimento custa a partir de R$ 5.000."
     await _ingest_chunk(db_session, chunk_text)
 

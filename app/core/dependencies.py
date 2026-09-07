@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.embeddings.local_provider import LocalEmbeddingsProvider
+from app.core.embeddings.disabled_provider import DisabledEmbeddingsProvider
 from app.core.embeddings.provider import EmbeddingsProvider
 from app.core.exceptions import NotFoundError
 from app.core.llm.maritaca_provider import MaritacaProvider
@@ -62,12 +62,20 @@ def get_llm_provider() -> LLMProvider:
 
 LLMProviderDep = Annotated[LLMProvider, Depends(get_llm_provider)]
 
-_embeddings_provider = LocalEmbeddingsProvider(
-    model_name=settings.embeddings_model_name,
-)
+_embeddings_provider: EmbeddingsProvider | None = None
 
 
 def get_embeddings_provider() -> EmbeddingsProvider:
+    global _embeddings_provider
+    if _embeddings_provider is None:
+        if settings.rag_enabled:
+            from app.core.embeddings.local_provider import LocalEmbeddingsProvider
+
+            _embeddings_provider = LocalEmbeddingsProvider(
+                model_name=settings.embeddings_model_name,
+            )
+        else:
+            _embeddings_provider = DisabledEmbeddingsProvider()
     return _embeddings_provider
 
 

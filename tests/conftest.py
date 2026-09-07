@@ -2,12 +2,20 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import app.core.dependencies as core_dependencies
 from app.core.dependencies import require_service_api_key
 from app.db.base import Base
 from app.db.session import get_db_session
 from app.main import app
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+
+@pytest.fixture(autouse=True)
+def reset_embeddings_provider_cache():
+    core_dependencies._embeddings_provider = None
+    yield
+    core_dependencies._embeddings_provider = None
 
 
 @pytest.fixture

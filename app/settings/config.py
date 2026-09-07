@@ -21,6 +21,9 @@ class Settings(BaseSettings):
 
     embeddings_model_name: str = "paraphrase-multilingual-mpnet-base-v2"
     embeddings_dimension: int = 768
+    # Local sentence-transformers embeddings stay off until a GPU host is
+    # available. Chat/diagnosis still run via the Maritaca API.
+    rag_enabled: bool = False
 
     internal_api_key: str = ""
 

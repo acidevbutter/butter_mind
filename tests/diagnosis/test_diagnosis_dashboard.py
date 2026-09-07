@@ -47,3 +47,4 @@ async def test_internal_dashboard_aggregates_turn_metrics_and_persists_governanc
     read_back = await client.get("/diagnosis/internal/dashboard/settings")
     assert read_back.status_code == 200
     assert read_back.json()["diagnosis_grounding_min_score"] == 0.5
+    assert read_back.json()["rag_enabled"] is False

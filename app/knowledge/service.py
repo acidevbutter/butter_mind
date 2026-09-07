@@ -2,9 +2,11 @@ import uuid
 
 from app.core.decorators import log_errors
 from app.core.embeddings.provider import EmbeddingsProvider
+from app.core.exceptions import ValidationDomainError
 from app.knowledge.models import KnowledgeChunk, KnowledgeSource
 from app.knowledge.repository import KnowledgeRepository
 from app.knowledge.schemas import KnowledgeSourceCreate
+from app.settings.config import settings
 
 # Naive fixed-size chunking, placeholder for future smarter (semantic/markdown-aware)
 # chunking once retrieval is actually built.
@@ -32,6 +34,10 @@ class KnowledgeIngestionService:
         return await self.repository.create_source(payload)
 
     async def ingest(self, *, source_id: uuid.UUID, text: str) -> list[KnowledgeChunk]:
+        if not settings.rag_enabled:
+            raise ValidationDomainError(
+                "RAG is disabled (RAG_ENABLED=false); embeddings and ingest are unavailable"
+            )
         await self.repository.get_source(source_id)
         chunks = _chunk_text(text)
         embeddings = self.embeddings_provider.embed_batch(chunks)
@@ -44,10 +50,11 @@ class KnowledgeIngestionService:
     ) -> list[tuple[KnowledgeChunk, float]]:
         """Retrieval side of the knowledge base -- the "no retrieval yet" gap
         this module used to have (see docs/mapa-chat-widget-metricas-tokens.md
-        §1). Skips embedding entirely when the knowledge base is empty, so
-        callers that never ingest anything (e.g. most of the existing test
-        suite) never pay for or depend on a real embeddings model.
+        §1). Skips embedding entirely when RAG is off or the knowledge base is
+        empty, so CPU hosts and tests that never ingest never load torch.
         """
+        if not settings.rag_enabled:
+            return []
         if not await self.repository.has_any_chunks():
             return []
         [query_embedding] = self.embeddings_provider.embed_batch([query])

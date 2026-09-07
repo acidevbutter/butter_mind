@@ -1,12 +1,16 @@
-from sentence_transformers import SentenceTransformer
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 
 class LocalEmbeddingsProvider:
     """Runs a sentence-transformers model in-process — no external embeddings API.
 
-    The model is loaded lazily on first use (not at construction time) so
-    importing this module — e.g. for the DI wiring in core/dependencies.py —
-    doesn't pay the model-load cost until an embedding is actually requested.
+    SentenceTransformer is imported only on first encode so a process that
+    never embeds (RAG_ENABLED=false) never pays the torch import cost.
     """
 
     def __init__(self, *, model_name: str):
@@ -15,6 +19,8 @@ class LocalEmbeddingsProvider:
 
     def _get_model(self) -> SentenceTransformer:
         if self._model is None:
+            from sentence_transformers import SentenceTransformer
+
             self._model = SentenceTransformer(self._model_name)
         return self._model
 
