@@ -1,5 +1,8 @@
+import os
 from typing import Literal
+from urllib.parse import quote
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,7 +13,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     environment: Literal["development", "staging", "preprod", "production"] = "development"
 
-    database_url: str = "postgresql+asyncpg://butter_mind:butter_mind@db:5432/butter_mind"
+    database_host: str = "db"
+    database_port: int = 5432
+    database_user: str = "butter_mind"
+    database_password: str = "butter_mind"
+    database_name: str = "butter_mind"
 
     cors_allowed_origins: list[str] = ["http://localhost:3000"]
     cors_allowed_origin_regex: str | None = None
@@ -42,6 +49,24 @@ class Settings(BaseSettings):
     diagnosis_max_turns: int = 30
     diagnosis_grounding_top_k: int = 3
     diagnosis_grounding_min_score: float = 0.35
+
+    @property
+    def database_url(self) -> str:
+        user = quote(self.database_user, safe="")
+        password = quote(self.database_password, safe="")
+        return (
+            f"postgresql+asyncpg://{user}:{password}"
+            f"@{self.database_host}:{self.database_port}/{self.database_name}"
+        )
+
+    @model_validator(mode="after")
+    def reject_legacy_database_url_outside_dev(self) -> "Settings":
+        if self.environment != "development" and os.environ.get("DATABASE_URL"):
+            raise ValueError(
+                "DATABASE_URL is no longer read; set DATABASE_HOST, DATABASE_PORT, "
+                "DATABASE_USER, DATABASE_PASSWORD and DATABASE_NAME"
+            )
+        return self
 
 
 settings = Settings()

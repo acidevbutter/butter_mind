@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Conexão Postgres passa a ser `DATABASE_HOST` / `PORT` / `USER` / `PASSWORD` /
+  `NAME`; o Pydantic monta `postgresql+asyncpg://`. `DATABASE_URL` residual
+  impede o boot fora de development.
+
 - Cotação IA: `ready` exige e-mail (e problema + serviço) além do perfil;
   `_sanitize_options` marca `recommended` na opção efetivamente mantida;
   `options_snapshot` é limpo ao voltar para `qualifying`.

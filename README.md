@@ -307,7 +307,7 @@ poetry run app db history
 |---|---|---|
 | `DEBUG` | `false` | Enables SQLAlchemy `echo` |
 | `LOG_LEVEL` | `INFO` | |
-| `DATABASE_URL` | `postgresql+asyncpg://butter_mind:butter_mind@db:5432/butter_mind` | |
+| `DATABASE_HOST` / `PORT` / `USER` / `PASSWORD` / `NAME` | `db` / `5432` / `butter_mind` | Pydantic monta `postgresql+asyncpg://` |
 | `CORS_ALLOWED_ORIGINS` | `["http://localhost:3000"]` | JSON list |
 | `CORS_ALLOWED_ORIGIN_REGEX` | — | |
 | `MARITACA_API_KEY` | — | Required for any `/chat` or `/diagnosis` call to work |
