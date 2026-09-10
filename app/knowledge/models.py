@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import JSON, DateTime, ForeignKey, Text, UniqueConstraint, func
@@ -16,7 +17,7 @@ class KnowledgeSource(Base):
     source_type: Mapped[str]
     uri: Mapped[str | None]
     title: Mapped[str]
-    source_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

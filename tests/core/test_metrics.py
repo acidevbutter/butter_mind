@@ -1,8 +1,10 @@
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import cast
 from uuid import uuid4
 
 import pytest
+from aws_embedded_metrics.config import get_config
 
 from app import main
 from app.core import metrics
@@ -11,7 +13,10 @@ from app.core.exceptions import NotFoundError
 from app.core.llm.exceptions import LLMBudgetExceededError
 from app.core.llm.schemas import LLMMessage
 from app.core.metrics import configure_metrics, emit_metrics, route_template, status_class
+from app.diagnosis.repository import DiagnosisRepository
 from app.diagnosis.service import DiagnosisService
+from app.knowledge.models import KnowledgeChunk
+from app.llm_usage.repository import LLMUsageRepository
 from app.llm_usage.service import LLMUsageService
 from app.settings.config import settings
 
@@ -114,7 +119,7 @@ def test_metrics_configuration_honors_emf_overrides(monkeypatch):
 
     configure_metrics()
 
-    config = metrics.get_config()
+    config = get_config()
     assert config.namespace == "Example/Namespace"
     assert config.service_name == "example-service"
     assert config.log_group_name == "/example/log-group"
@@ -194,7 +199,7 @@ async def test_budget_utilization_and_exceeded_are_emitted(monkeypatch):
         emitted.append(values)
 
     monkeypatch.setattr("app.llm_usage.service.emit_metrics", capture)
-    service = LLMUsageService(FakeUsageRepository())
+    service = LLMUsageService(cast(LLMUsageRepository, FakeUsageRepository()))
 
     with pytest.raises(LLMBudgetExceededError):
         await service.ensure_budget(
@@ -216,15 +221,20 @@ async def test_grounding_metrics_emit_chunk_count_and_score(monkeypatch):
         emitted.append(values)
 
     monkeypatch.setattr("app.diagnosis.service.emit_metrics", capture)
-    service = DiagnosisService(FakeDiagnosisRepository(), None, None, None)
+    service = DiagnosisService(
+        cast(DiagnosisRepository, FakeDiagnosisRepository()), None, None, None
+    )
 
     await service._record_turn_metrics(
         session_id=uuid4(),
         assistant_message_id=uuid4(),
-        retrieved=[
-            (SimpleNamespace(id=uuid4()), 0.8),
-            (SimpleNamespace(id=uuid4()), 0.6),
-        ],
+        retrieved=cast(
+            "list[tuple[KnowledgeChunk, float]]",
+            [
+                (SimpleNamespace(id=uuid4()), 0.8),
+                (SimpleNamespace(id=uuid4()), 0.6),
+            ],
+        ),
         input_tokens=1,
         cached_input_tokens=0,
         output_tokens=2,

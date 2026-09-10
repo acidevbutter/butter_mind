@@ -24,7 +24,10 @@ GENERATE_SYSTEM_PROMPT = (
 @log_errors
 class ChatService:
     def __init__(
-        self, repository: ChatRepository, llm_provider: LLMProvider, llm_usage_service: LLMUsageService
+        self,
+        repository: ChatRepository,
+        llm_provider: LLMProvider,
+        llm_usage_service: LLMUsageService,
     ):
         self.repository = repository
         self.llm_provider = llm_provider
@@ -41,7 +44,9 @@ class ChatService:
 
     async def send_message(self, *, conversation_id: uuid.UUID, content: str) -> ChatMessage:
         await self.repository.get_conversation(conversation_id)
-        await self.repository.add_message(conversation_id=conversation_id, role="user", content=content)
+        await self.repository.add_message(
+            conversation_id=conversation_id, role="user", content=content
+        )
 
         history = await self.repository.list_messages(conversation_id)
         llm_messages = [LLMMessage(role=m.role, content=m.content) for m in history]

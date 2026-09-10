@@ -40,6 +40,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = ["app/alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -48,6 +49,11 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 plugins = ["pydantic.mypy"]
 strict = true
+
+[[tool.mypy.overrides]]
+# pgvector ships no type information.
+module = "pgvector.*"
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 # Tests take untyped pytest fixtures and lean on runtime validation (Pydantic,

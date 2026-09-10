@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
@@ -26,4 +26,4 @@ class LocalEmbeddingsProvider:
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         embeddings = self._get_model().encode(texts, convert_to_numpy=True)
-        return embeddings.tolist()
+        return cast(list[list[float]], embeddings.tolist())
