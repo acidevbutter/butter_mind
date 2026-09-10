@@ -163,6 +163,8 @@ class MaritacaProvider:
         return LLMStructuredResponse(
             data=schema.model_validate(json.loads(raw)),
             response=LLMResponse(
-                content=raw, model=response.model, usage=self._usage(getattr(response, "usage", None))
+                content=raw,
+                model=response.model,
+                usage=self._usage(getattr(response, "usage", None)),
             ),
         )

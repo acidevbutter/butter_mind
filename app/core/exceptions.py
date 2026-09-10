@@ -49,4 +49,6 @@ async def handle_conflict(request: Request, exc: ConflictError) -> JSONResponse:
 
 @exception_handler(ValidationDomainError)
 async def handle_validation(request: Request, exc: ValidationDomainError) -> JSONResponse:
-    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": exc.detail})
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": exc.detail}
+    )

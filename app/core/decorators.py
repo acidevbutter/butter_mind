@@ -20,7 +20,9 @@ def log_call(func):
             try:
                 return await func(*args, **kwargs)
             except Exception:
-                log.exception("%s failed", qualname, extra={"event": "method_error", "target": qualname})
+                log.exception(
+                    "%s failed", qualname, extra={"event": "method_error", "target": qualname}
+                )
                 raise
         return async_wrapper
 
@@ -30,7 +32,9 @@ def log_call(func):
         try:
             return func(*args, **kwargs)
         except Exception:
-            log.exception("%s failed", qualname, extra={"event": "method_error", "target": qualname})
+            log.exception(
+                "%s failed", qualname, extra={"event": "method_error", "target": qualname}
+            )
             raise
     return sync_wrapper
 
