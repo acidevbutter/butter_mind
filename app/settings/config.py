@@ -68,5 +68,18 @@ class Settings(BaseSettings):
             )
         return self
 
+    @model_validator(mode="after")
+    def reject_dev_secrets_outside_development(self) -> "Settings":
+        if self.environment == "development":
+            return self
+        defaults = type(self).model_fields
+        if self.database_password == defaults["database_password"].default:
+            raise ValueError(
+                "DATABASE_PASSWORD must not be left at its development default outside development"
+            )
+        if not self.maritaca_api_key:
+            raise ValueError("MARITACA_API_KEY must be set outside development")
+        return self
+
 
 settings = Settings()
