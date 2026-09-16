@@ -112,6 +112,30 @@ def test_json_formatter_produces_expected_shape():
     assert "timestamp" in payload
 
 
+def test_json_formatter_passes_metrics_payloads_through_unwrapped():
+    """app.core.metrics.emit_metrics logs an already-complete, flat JSON
+    payload to the "metrics" logger. This formatter must not re-wrap it
+    inside its own envelope, or every metric field ends up hidden as an
+    escaped string inside "event" and New Relic's top-level-key
+    auto-parsing can't see route/status/duration.
+    """
+    metric_payload = {"timestamp": 1234, "message": "metric_emitted", "Route": "/health"}
+    logger = logging.getLogger("metrics")
+    record = logger.makeRecord(
+        name="metrics",
+        level=logging.INFO,
+        fn="test",
+        lno=1,
+        msg=json.dumps(metric_payload),
+        args=(),
+        exc_info=None,
+    )
+
+    formatted = JsonFormatter().format(record)
+
+    assert json.loads(formatted) == metric_payload
+
+
 def test_setup_logging_quiets_uvicorn_access_log():
     setup_logging("INFO")
 
