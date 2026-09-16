@@ -1,0 +1,42 @@
+# Deploy target: Hostinger VPS via Coolify.
+# `docker compose -f docker-compose.hostinger.yml up -d --build`
+# Coolify injects the environment variables below at deploy time; there is
+# no .env file in this image (see docker/Dockerfile.hostinger.dockerignore).
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.hostinger
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+
+      DATABASE_HOST: ${DATABASE_HOST}
+      DATABASE_PORT: ${DATABASE_PORT:-5432}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_NAME: ${DATABASE_NAME}
+
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      CORS_ALLOWED_ORIGIN_REGEX: ${CORS_ALLOWED_ORIGIN_REGEX:-}
+
+      MARITACA_API_KEY: ${MARITACA_API_KEY}
+      MARITACA_BASE_URL: ${MARITACA_BASE_URL:-https://chat.maritaca.ai/api}
+      MARITACA_MODEL: ${MARITACA_MODEL:-sabiazinho-4-br-sp}
+
+      RAG_ENABLED: ${RAG_ENABLED:-false}
+      EMBEDDINGS_MODEL_NAME: ${EMBEDDINGS_MODEL_NAME:-paraphrase-multilingual-mpnet-base-v2}
+      EMBEDDINGS_DIMENSION: ${EMBEDDINGS_DIMENSION:-768}
+
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      SERVICE_API_KEY: ${SERVICE_API_KEY}
+
+      DIAGNOSIS_MAX_OUTPUT_TOKENS: ${DIAGNOSIS_MAX_OUTPUT_TOKENS:-1024}
+      DIAGNOSIS_MAX_HISTORY_MESSAGES: ${DIAGNOSIS_MAX_HISTORY_MESSAGES:-12}
+      DIAGNOSIS_MAX_TURNS: ${DIAGNOSIS_MAX_TURNS:-30}
+      DIAGNOSIS_GROUNDING_TOP_K: ${DIAGNOSIS_GROUNDING_TOP_K:-3}
+      DIAGNOSIS_GROUNDING_MIN_SCORE: ${DIAGNOSIS_GROUNDING_MIN_SCORE:-0.35}
