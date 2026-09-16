@@ -26,10 +26,13 @@ class Settings(BaseSettings):
     maritaca_base_url: str = "https://chat.maritaca.ai/api"
     maritaca_model: str = "sabia-4"
 
-    embeddings_model_name: str = "paraphrase-multilingual-mpnet-base-v2"
+    # Embeddings are unplugged today (see app/core/embeddings/unplugged_provider.py):
+    # no in-process model, no external API call. These settings only describe
+    # which remote API a future implementation should call.
+    embeddings_provider: Literal["openai", "anthropic"] = "openai"
+    embeddings_model_name: str = "text-embedding-3-small"
     embeddings_dimension: int = 768
-    # Local sentence-transformers embeddings stay off until a GPU host is
-    # available. Chat/diagnosis still run via the Maritaca API.
+    embeddings_api_key: str = ""
     rag_enabled: bool = False
 
     internal_api_key: str = ""

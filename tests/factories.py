@@ -82,8 +82,8 @@ class FakeLLMProvider(LLMProvider):
 
 
 class FakeEmbeddingsProvider(EmbeddingsProvider):
-    """In-memory stand-in for LocalEmbeddingsProvider — avoids loading a real
-    sentence-transformers model in tests. Deterministic per input text (same
+    """In-memory stand-in for a real embeddings provider — avoids calling a
+    real embeddings API in tests. Deterministic per input text (same
     text always yields the same vector, via a hash, not a real semantic
     model), which is enough to exercise similarity ranking: identical text
     always scores a cosine similarity of 1.0 against itself.
