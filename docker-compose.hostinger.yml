@@ -8,8 +8,10 @@ services:
       context: .
       dockerfile: docker/Dockerfile.hostinger
     restart: unless-stopped
+    # Configurable so a redeploy can pick a free host port from Coolify's env
+    # var UI (no code change) if something else on the VPS already holds 8000.
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:8000"
     environment:
       DEBUG: ${DEBUG:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
