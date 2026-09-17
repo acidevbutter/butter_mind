@@ -36,16 +36,22 @@ async def handle_llm_provider_error(request: Request, exc: LLMProviderError) -> 
 
 @exception_handler(LLMRateLimitError)
 async def handle_llm_rate_limit_error(request: Request, exc: LLMRateLimitError) -> JSONResponse:
-    return JSONResponse(status_code=status.HTTP_429_TOO_MANY_REQUESTS, content={"detail": exc.detail})
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS, content={"detail": exc.detail}
+    )
 
 
 @exception_handler(LLMBudgetExceededError)
 async def handle_llm_budget_error(request: Request, exc: LLMBudgetExceededError) -> JSONResponse:
-    return JSONResponse(status_code=status.HTTP_429_TOO_MANY_REQUESTS, content={"detail": exc.detail})
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS, content={"detail": exc.detail}
+    )
 
 
 @exception_handler(LLMPricingUnavailableError)
 async def handle_llm_pricing_error(
     request: Request, exc: LLMPricingUnavailableError
 ) -> JSONResponse:
-    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": exc.detail})
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": exc.detail}
+    )

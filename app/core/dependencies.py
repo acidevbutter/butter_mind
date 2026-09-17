@@ -69,9 +69,10 @@ def get_embeddings_provider() -> EmbeddingsProvider:
     global _embeddings_provider
     if _embeddings_provider is None:
         if settings.rag_enabled:
-            from app.core.embeddings.local_provider import LocalEmbeddingsProvider
+            from app.core.embeddings.unplugged_provider import UnpluggedEmbeddingsProvider
 
-            _embeddings_provider = LocalEmbeddingsProvider(
+            _embeddings_provider = UnpluggedEmbeddingsProvider(
+                provider=settings.embeddings_provider,
                 model_name=settings.embeddings_model_name,
             )
         else:

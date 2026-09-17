@@ -63,7 +63,8 @@ def db_make(description: str) -> None:
     if len(heads_after) != 1:
         typer.echo(
             f"ERROR: migration generation resulted in {len(heads_after)} heads: {heads_after}. "
-            "This should not happen from a single-head autogenerate -- investigate before proceeding.",
+            "This should not happen from a single-head autogenerate -- investigate before "
+            "proceeding.",
             err=True,
         )
         raise typer.Exit(code=1)

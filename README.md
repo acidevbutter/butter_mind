@@ -29,7 +29,7 @@ flowchart LR
     end
 
     LLM["LLMProvider protocol\n-> MaritacaProvider\n(Sabiá models, OpenAI-compatible)"]
-    Embed["EmbeddingsProvider protocol\n-> LocalEmbeddingsProvider\n(sentence-transformers, in-process)"]
+    Embed["EmbeddingsProvider protocol\n-> UnpluggedEmbeddingsProvider\n(OpenAI/Anthropic, not wired up yet)"]
     DB[("Postgres + pgvector\nchat_*, diagnosis_*, knowledge_*,\nllm_usage_*, llm_budget_*")]
     Maritaca[("Maritaca AI API")]
 
@@ -60,9 +60,9 @@ Every domain follows the same six-file shape used across the DevButter services:
   (`responses.create`; `instructions` carries the stable prompt and `input` the dynamic
   conversation, enabling Maritaca prompt cache). Domain services (`ChatService`, `DiagnosisService`) depend on the
   protocol, never on `MaritacaProvider` directly, so swapping providers later doesn't touch them.
-- **`core/embeddings/`**: same pattern — `EmbeddingsProvider` protocol, `LocalEmbeddingsProvider`
-  runs a `sentence-transformers` model **in-process** (no external embeddings API), lazily loaded
-  on first use so importing the module for DI wiring doesn't pay the model-load cost.
+- **`core/embeddings/`**: same pattern — `EmbeddingsProvider` protocol. `UnpluggedEmbeddingsProvider`
+  is a placeholder for a future OpenAI or Anthropic embeddings API client (`embed_batch` raises
+  `NotImplementedError`); `DisabledEmbeddingsProvider` is used whenever `RAG_ENABLED=false`.
 - **`core/dependencies.py`**: FastAPI DI wiring — `DbSession`, `LLMProviderDep`,
   `EmbeddingsProviderDep`, and `require_internal_api_key` (fails closed: if
   `INTERNAL_API_KEY` is unset, every gated route 404s rather than opening up).
@@ -252,7 +252,7 @@ sequenceDiagram
 | Framework | FastAPI (async), Poetry-managed |
 | Persistence | SQLAlchemy 2.0 (async) + Alembic, Postgres 16 + **pgvector** |
 | LLM | Maritaca AI (Sabiá models) via `openai` SDK against a custom `base_url` |
-| Embeddings | `sentence-transformers` (`paraphrase-multilingual-mpnet-base-v2`, 768-dim), in-process |
+| Embeddings | Unplugged (`UnpluggedEmbeddingsProvider`) — OpenAI or Anthropic embeddings API, not wired up yet |
 | CLI | `typer` (`app db heads/history/migrate/rollback/make`) |
 | Testing | `pytest` + `pytest-asyncio` + `httpx`, `aiosqlite` for tests |
 
@@ -268,7 +268,7 @@ app/
 │   ├── dependencies.py   # DI: DbSession, LLMProviderDep, EmbeddingsProviderDep, internal-key gate
 │   ├── exceptions.py     # self-registering domain exception -> HTTP mapping
 │   ├── llm/              # LLMProvider protocol + MaritacaProvider + its own exceptions
-│   └── embeddings/       # EmbeddingsProvider protocol + LocalEmbeddingsProvider
+│   └── embeddings/       # EmbeddingsProvider protocol + UnpluggedEmbeddingsProvider
 ├── db/               # base.py (DeclarativeBase), session.py, all_models.py (Alembic autogenerate)
 ├── <domain>/         # each: models/schemas/repository/service/router/dependencies.py
 ├── chat/             # open-ended conversation + one-off generate
@@ -307,13 +307,14 @@ poetry run app db history
 |---|---|---|
 | `DEBUG` | `false` | Enables SQLAlchemy `echo` |
 | `LOG_LEVEL` | `INFO` | |
-| `DATABASE_URL` | `postgresql+asyncpg://butter_mind:butter_mind@db:5432/butter_mind` | |
+| `DATABASE_HOST` / `PORT` / `USER` / `PASSWORD` / `NAME` | `db` / `5432` / `butter_mind` | Pydantic monta `postgresql+asyncpg://` |
 | `CORS_ALLOWED_ORIGINS` | `["http://localhost:3000"]` | JSON list |
 | `CORS_ALLOWED_ORIGIN_REGEX` | — | |
 | `MARITACA_API_KEY` | — | Required for any `/chat` or `/diagnosis` call to work |
 | `MARITACA_BASE_URL` | `https://chat.maritaca.ai/api` | |
 | `MARITACA_MODEL` | `sabia-4` | `.env.example` suggests `sabiazinho-4-br-sp` for local/dev cost |
-| `EMBEDDINGS_MODEL_NAME` | `paraphrase-multilingual-mpnet-base-v2` | Changing requires a migration + full re-embed (dimension is pinned in the `knowledge_chunks` column) |
+| `EMBEDDINGS_PROVIDER` | `openai` | `openai` or `anthropic` — which API `UnpluggedEmbeddingsProvider` names in its `NotImplementedError`; no client is wired up yet |
+| `EMBEDDINGS_MODEL_NAME` | `text-embedding-3-small` | Changing requires a migration + full re-embed (dimension is pinned in the `knowledge_chunks` column) |
 | `EMBEDDINGS_DIMENSION` | `768` | |
 | `INTERNAL_API_KEY` | — | Gates `/knowledge/*` and `GET /diagnosis/requests`. **Unset = those routes always 404** (fails closed) |
 

@@ -129,7 +129,10 @@ async def test_chat_routes_require_service_api_key(client, monkeypatch):
     _disable_default_override()
 
     # create_conversation
-    assert (await client.post("/chat/conversations", json={"session_id": "gate-chat-2"})).status_code == 404
+    unauthenticated = await client.post(
+        "/chat/conversations", json={"session_id": "gate-chat-2"}
+    )
+    assert unauthenticated.status_code == 404
     assert (
         await client.post(
             "/chat/conversations", json={"session_id": "gate-chat-2"}, headers={HEADER: "s3cret"}

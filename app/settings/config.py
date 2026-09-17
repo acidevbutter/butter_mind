@@ -1,5 +1,8 @@
+import os
 from typing import Literal
+from urllib.parse import quote
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,7 +13,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     environment: Literal["development", "staging", "preprod", "production"] = "development"
 
-    database_url: str = "postgresql+asyncpg://butter_mind:butter_mind@db:5432/butter_mind"
+    database_host: str = "db"
+    database_port: int = 5432
+    database_user: str = "butter_mind"
+    database_password: str = "butter_mind"
+    database_name: str = "butter_mind"
 
     cors_allowed_origins: list[str] = ["http://localhost:3000"]
     cors_allowed_origin_regex: str | None = None
@@ -19,10 +26,13 @@ class Settings(BaseSettings):
     maritaca_base_url: str = "https://chat.maritaca.ai/api"
     maritaca_model: str = "sabia-4"
 
-    embeddings_model_name: str = "paraphrase-multilingual-mpnet-base-v2"
+    # Embeddings are unplugged today (see app/core/embeddings/unplugged_provider.py):
+    # no in-process model, no external API call. These settings only describe
+    # which remote API a future implementation should call.
+    embeddings_provider: Literal["openai", "anthropic"] = "openai"
+    embeddings_model_name: str = "text-embedding-3-small"
     embeddings_dimension: int = 768
-    # Local sentence-transformers embeddings stay off until a GPU host is
-    # available. Chat/diagnosis still run via the Maritaca API.
+    embeddings_api_key: str = ""
     rag_enabled: bool = False
 
     internal_api_key: str = ""
@@ -42,6 +52,37 @@ class Settings(BaseSettings):
     diagnosis_max_turns: int = 30
     diagnosis_grounding_top_k: int = 3
     diagnosis_grounding_min_score: float = 0.35
+
+    @property
+    def database_url(self) -> str:
+        user = quote(self.database_user, safe="")
+        password = quote(self.database_password, safe="")
+        return (
+            f"postgresql+asyncpg://{user}:{password}"
+            f"@{self.database_host}:{self.database_port}/{self.database_name}"
+        )
+
+    @model_validator(mode="after")
+    def reject_legacy_database_url_outside_dev(self) -> "Settings":
+        if self.environment != "development" and os.environ.get("DATABASE_URL"):
+            raise ValueError(
+                "DATABASE_URL is no longer read; set DATABASE_HOST, DATABASE_PORT, "
+                "DATABASE_USER, DATABASE_PASSWORD and DATABASE_NAME"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def reject_dev_secrets_outside_development(self) -> "Settings":
+        if self.environment == "development":
+            return self
+        defaults = type(self).model_fields
+        if self.database_password == defaults["database_password"].default:
+            raise ValueError(
+                "DATABASE_PASSWORD must not be left at its development default outside development"
+            )
+        if not self.maritaca_api_key:
+            raise ValueError("MARITACA_API_KEY must be set outside development")
+        return self
 
 
 settings = Settings()

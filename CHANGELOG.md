@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+- Observabilidade HTTP normalizada: logs de request agora são JSON estruturado
+  (`app/settings/logging_config.JsonFormatter`), com um único evento
+  `request_completed`/`request_failed` por requisição emitido por
+  `RequestContextMiddleware` (antes, requisições com exceção geravam dois
+  logs — `logger.exception` + o log final — e o access log do uvicorn
+  duplicava o mesmo evento). `uvicorn.access` foi silenciado
+  (`WARNING`, `propagate=False`). Campos: `timestamp`, `level`, `logger`,
+  `event`, `service`, `environment`, `request_id`, `method`, `route`
+  (template da rota; path bruto só quando não casa nenhuma rota),
+  `status_code`, `duration_ms`. Sem novas dependências — o EMF via
+  `app/core/metrics.py` continua como estava (dimensões já eram
+  low-cardinality; `request_id` permanece exclusivo do log).
+- Conexão Postgres passa a ser `DATABASE_HOST` / `PORT` / `USER` / `PASSWORD` /
+  `NAME`; o Pydantic monta `postgresql+asyncpg://`. `DATABASE_URL` residual
+  impede o boot fora de development.
+
 - Cotação IA: `ready` exige e-mail (e problema + serviço) além do perfil;
   `_sanitize_options` marca `recommended` na opção efetivamente mantida;
   `options_snapshot` é limpo ao voltar para `qualifying`.

@@ -1,5 +1,8 @@
+import json
+import logging
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -11,30 +14,12 @@ from app.core.exceptions import NotFoundError
 from app.core.llm.exceptions import LLMBudgetExceededError
 from app.core.llm.schemas import LLMMessage
 from app.core.metrics import configure_metrics, emit_metrics, route_template, status_class
+from app.diagnosis.repository import DiagnosisRepository
 from app.diagnosis.service import DiagnosisService
+from app.knowledge.models import KnowledgeChunk
+from app.llm_usage.repository import LLMUsageRepository
 from app.llm_usage.service import LLMUsageService
 from app.settings.config import settings
-
-
-class FakeMetricsLogger:
-    def __init__(self, *, flush_error: bool = False):
-        self.flush_error = flush_error
-        self.namespace = ""
-        self.dimension_sets: tuple[dict[str, str], ...] = ()
-        self.values: dict[str, tuple[float, str]] = {}
-
-    def set_namespace(self, namespace: str) -> None:
-        self.namespace = namespace
-
-    def set_dimensions(self, *dimension_sets: dict[str, str]) -> None:
-        self.dimension_sets = dimension_sets
-
-    def put_metric(self, name: str, value: float, unit: str) -> None:
-        self.values[name] = (value, unit)
-
-    async def flush(self) -> None:
-        if self.flush_error:
-            raise OSError("stdout unavailable")
 
 
 class FakeBudget:
@@ -76,54 +61,53 @@ class FakeSessionContext:
         return None
 
 
-async def test_emit_metrics_uses_low_cardinality_dimensions(monkeypatch):
-    fake = FakeMetricsLogger()
-    monkeypatch.setattr(metrics, "create_metrics_logger", lambda: fake)
+async def test_emit_metrics_writes_one_json_line(monkeypatch, caplog):
     monkeypatch.setattr(settings, "environment", "staging")
 
-    await emit_metrics(
-        dimensions={
-            "Method": "GET",
-            "Route": "/diagnosis/sessions/{session_id}",
-            "StatusClass": "2xx",
-        },
-        values={"RequestCount": (1, "Count")},
-    )
+    with caplog.at_level(logging.INFO, logger="metrics"):
+        await emit_metrics(
+            dimensions={
+                "Method": "GET",
+                "Route": "/diagnosis/sessions/{session_id}",
+                "StatusClass": "2xx",
+            },
+            values={"RequestCount": (1, "Count")},
+        )
 
-    assert fake.namespace == "DevButter/ButterMind"
-    assert fake.dimension_sets == (
-        {"Environment": "staging", "Service": "butter_mind"},
-        {
-            "Environment": "staging",
-            "Service": "butter_mind",
-            "Method": "GET",
-            "Route": "/diagnosis/sessions/{session_id}",
-            "StatusClass": "2xx",
-        },
-    )
-    assert fake.values == {"RequestCount": (1, "Count")}
-    assert all(
-        not {"CN", "Email", "AccountId"} & dimensions.keys() for dimensions in fake.dimension_sets
-    )
+    assert len(caplog.records) == 1
+    payload = json.loads(caplog.records[0].message)
+    assert payload["service.name"] == metrics.SERVICE_NAME
+    assert payload["environment"] == "staging"
+    assert payload["metric.namespace"] == "DevButter/ButterMind"
+    assert payload["Method"] == "GET"
+    assert payload["Route"] == "/diagnosis/sessions/{session_id}"
+    assert payload["StatusClass"] == "2xx"
+    assert payload["RequestCount"] == 1
+    assert payload["RequestCount.unit"] == "Count"
+    assert not {"CN", "Email", "AccountId"} & payload.keys()
 
 
-def test_metrics_configuration_honors_emf_overrides(monkeypatch):
-    monkeypatch.setenv("AWS_EMF_NAMESPACE", "Example/Namespace")
-    monkeypatch.setenv("AWS_EMF_SERVICE_NAME", "example-service")
-    monkeypatch.setenv("AWS_EMF_LOG_GROUP_NAME", "/example/log-group")
-
+def test_configure_metrics_is_callable_without_side_effects() -> None:
     configure_metrics()
 
-    config = metrics.get_config()
-    assert config.namespace == "Example/Namespace"
-    assert config.service_name == "example-service"
-    assert config.log_group_name == "/example/log-group"
+
+async def test_emit_metrics_failure_does_not_raise(monkeypatch, caplog):
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("stdout unavailable")
+
+    monkeypatch.setattr(metrics, "_metrics_logger", type("_Boom", (), {"info": _boom})())
+
+    with caplog.at_level(logging.ERROR):
+        await emit_metrics(dimensions={}, values={})
+
+    assert "Failed to emit metrics" in caplog.text
 
 
-async def test_middleware_continues_when_emf_flush_fails(client, monkeypatch):
-    monkeypatch.setattr(
-        metrics, "create_metrics_logger", lambda: FakeMetricsLogger(flush_error=True)
-    )
+async def test_middleware_continues_when_metrics_sink_fails(client, monkeypatch):
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("stdout unavailable")
+
+    monkeypatch.setattr(metrics, "_metrics_logger", type("_Boom", (), {"info": _boom})())
 
     response = await client.get("/health")
 
@@ -194,7 +178,7 @@ async def test_budget_utilization_and_exceeded_are_emitted(monkeypatch):
         emitted.append(values)
 
     monkeypatch.setattr("app.llm_usage.service.emit_metrics", capture)
-    service = LLMUsageService(FakeUsageRepository())
+    service = LLMUsageService(cast(LLMUsageRepository, FakeUsageRepository()))
 
     with pytest.raises(LLMBudgetExceededError):
         await service.ensure_budget(
@@ -216,15 +200,20 @@ async def test_grounding_metrics_emit_chunk_count_and_score(monkeypatch):
         emitted.append(values)
 
     monkeypatch.setattr("app.diagnosis.service.emit_metrics", capture)
-    service = DiagnosisService(FakeDiagnosisRepository(), None, None, None)
+    service = DiagnosisService(
+        cast(DiagnosisRepository, FakeDiagnosisRepository()), None, None, None
+    )
 
     await service._record_turn_metrics(
         session_id=uuid4(),
         assistant_message_id=uuid4(),
-        retrieved=[
-            (SimpleNamespace(id=uuid4()), 0.8),
-            (SimpleNamespace(id=uuid4()), 0.6),
-        ],
+        retrieved=cast(
+            "list[tuple[KnowledgeChunk, float]]",
+            [
+                (SimpleNamespace(id=uuid4()), 0.8),
+                (SimpleNamespace(id=uuid4()), 0.6),
+            ],
+        ),
         input_tokens=1,
         cached_input_tokens=0,
         output_tokens=2,

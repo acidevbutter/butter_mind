@@ -4,7 +4,9 @@ from tests.factories import FakeLLMProvider
 
 
 async def test_create_conversation_and_send_message(client):
-    app.dependency_overrides[get_llm_provider] = lambda: FakeLLMProvider(reply="Olá! Como posso ajudar?")
+    app.dependency_overrides[get_llm_provider] = lambda: FakeLLMProvider(
+        reply="Olá! Como posso ajudar?"
+    )
 
     created = await client.post("/chat/conversations", json={"session_id": "abc123"})
     assert created.status_code == 201

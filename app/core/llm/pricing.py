@@ -20,7 +20,9 @@ def actual_cost_brl(model: str, usage: LLMUsage) -> Decimal | None:
     input_price, cached_input_price, output_price = prices
     cached = min(usage.cached_input_tokens or 0, usage.input_tokens)
     uncached = usage.input_tokens - cached
-    return (uncached * input_price + cached * cached_input_price + usage.output_tokens * output_price) / _MILLION
+    total = uncached * input_price + cached * cached_input_price
+    total += usage.output_tokens * output_price
+    return total / _MILLION
 
 
 def maximum_cost_brl(*, model: str, input_text: str, max_output_tokens: int) -> Decimal | None:
