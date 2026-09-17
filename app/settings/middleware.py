@@ -21,9 +21,9 @@ def _route_for_log(request: Request) -> str:
     """Matched route template when available, else the raw path.
 
     Unlike `route_template()` in app.core.metrics (which collapses unmatched
-    requests to a fixed "unmatched" label to keep EMF dimension cardinality
-    low), a log line can carry the literal path for 404s/unmatched requests
-    without that concern.
+    requests to a fixed "unmatched" label to keep metric dimension
+    cardinality low), a log line can carry the literal path for
+    404s/unmatched requests without that concern.
     """
     route = request.scope.get("route")
     path = getattr(route, "path", None)
