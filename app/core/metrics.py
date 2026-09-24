@@ -1,6 +1,4 @@
-import json
 import logging
-import time
 from collections.abc import Mapping
 
 from starlette.requests import Request
@@ -50,16 +48,16 @@ async def emit_metrics(
     """
     try:
         payload: dict[str, object] = {
-            "timestamp": int(time.time() * 1000),
-            "message": "metric_emitted",
-            "service.name": SERVICE_NAME,
+            "event": "metric_emitted",
+            "log_type": "metric",
+            "service": SERVICE_NAME,
             "environment": settings.environment,
-            "metric.namespace": NAMESPACE,
+            "metric_namespace": NAMESPACE,
             **dimensions,
         }
         for name, (value, unit) in values.items():
             payload[name] = value
-            payload[f"{name}.unit"] = unit
-        _metrics_logger.info(json.dumps(payload, default=str))
+            payload[f"{name}_unit"] = unit
+        _metrics_logger.info("metric emitted", extra=payload)
     except Exception:
         logger.exception("Failed to emit metrics")

@@ -1,4 +1,3 @@
-import json
 import logging
 from decimal import Decimal
 from types import SimpleNamespace
@@ -61,7 +60,7 @@ class FakeSessionContext:
         return None
 
 
-async def test_emit_metrics_writes_one_json_line(monkeypatch, caplog):
+async def test_emit_metrics_writes_one_structured_event(monkeypatch, caplog):
     monkeypatch.setattr(settings, "environment", "staging")
 
     with caplog.at_level(logging.INFO, logger="metrics"):
@@ -75,15 +74,16 @@ async def test_emit_metrics_writes_one_json_line(monkeypatch, caplog):
         )
 
     assert len(caplog.records) == 1
-    payload = json.loads(caplog.records[0].message)
-    assert payload["service.name"] == metrics.SERVICE_NAME
+    payload = vars(caplog.records[0])
+    assert payload["event"] == "metric_emitted"
+    assert payload["service"] == metrics.SERVICE_NAME
     assert payload["environment"] == "staging"
-    assert payload["metric.namespace"] == "DevButter/ButterMind"
+    assert payload["metric_namespace"] == "DevButter/ButterMind"
     assert payload["Method"] == "GET"
     assert payload["Route"] == "/diagnosis/sessions/{session_id}"
     assert payload["StatusClass"] == "2xx"
     assert payload["RequestCount"] == 1
-    assert payload["RequestCount.unit"] == "Count"
+    assert payload["RequestCount_unit"] == "Count"
     assert not {"CN", "Email", "AccountId"} & payload.keys()
 
 
