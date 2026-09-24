@@ -3,6 +3,10 @@ import logging
 import logging.config
 from datetime import UTC, datetime
 
+from app.core.metrics import SERVICE_NAME
+from app.settings.config import settings
+from app.settings.terminal_logging import ServiceContextFilter, TerminalFormatter
+
 # Attributes present on every stdlib LogRecord (plus the synthetic ones the
 # default Formatter adds). Anything a call site passes via `extra=` shows up
 # as additional attributes beyond this set, so diffing against it is how we
@@ -50,10 +54,21 @@ def setup_logging(level: str = "INFO") -> None:
             "version": 1,
             "disable_existing_loggers": False,
             "formatters": {
-                "json": {"()": JsonFormatter},
+                "terminal": {"()": TerminalFormatter},
             },
             "handlers": {
-                "console": {"class": "logging.StreamHandler", "formatter": "json"},
+                "console": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "terminal",
+                    "filters": ["service_context"],
+                },
+            },
+            "filters": {
+                "service_context": {
+                    "()": ServiceContextFilter,
+                    "service_name": SERVICE_NAME,
+                    "environment": settings.environment,
+                }
             },
             "root": {"handlers": ["console"], "level": level},
             "loggers": {

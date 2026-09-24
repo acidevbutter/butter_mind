@@ -4,6 +4,7 @@ from sqlalchemy import text
 from app.chat.router import router as chat_router
 from app.core.exceptions import register_exception_handlers
 from app.core.metrics import configure_metrics, emit_metrics
+from app.core.telemetry import configure_telemetry
 from app.db.session import session_factory
 from app.diagnosis.router import router as diagnosis_router
 from app.knowledge.router import router as knowledge_router
@@ -16,6 +17,7 @@ setup_logging(settings.log_level)
 configure_metrics()
 
 app = FastAPI(title="DevButter Backend API")
+configure_telemetry(app)
 register_middleware(app)
 register_exception_handlers(app)
 app.include_router(chat_router)
