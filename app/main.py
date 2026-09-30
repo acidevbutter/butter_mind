@@ -1,10 +1,10 @@
+import logging
+
 from fastapi import FastAPI, HTTPException
 from sqlalchemy import text
 
 from app.chat.router import router as chat_router
 from app.core.exceptions import register_exception_handlers
-from app.core.metrics import configure_metrics, emit_metrics
-from app.core.telemetry import configure_telemetry
 from app.db.session import session_factory
 from app.diagnosis.router import router as diagnosis_router
 from app.knowledge.router import router as knowledge_router
@@ -14,10 +14,9 @@ from app.settings.logging_config import setup_logging
 from app.settings.middleware import register_middleware
 
 setup_logging(settings.log_level)
-configure_metrics()
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="DevButter Backend API")
-configure_telemetry(app)
 register_middleware(app)
 register_exception_handlers(app)
 app.include_router(chat_router)
@@ -37,9 +36,8 @@ async def ready() -> dict[str, str]:
         async with session_factory() as session:
             await session.execute(text("SELECT 1"))
     except Exception as exc:
-        await emit_metrics(
-            dimensions={"Check": "database"},
-            values={"HealthCheckFailure": (1, "Count")},
+        logger.warning(
+            "Readiness check failed: database unavailable", extra={"event": "health_check_failed"}
         )
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
     return {"status": "ready"}

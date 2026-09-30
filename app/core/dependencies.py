@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import Depends, Header
@@ -8,9 +9,10 @@ from app.core.embeddings.provider import EmbeddingsProvider
 from app.core.exceptions import NotFoundError
 from app.core.llm.maritaca_provider import MaritacaProvider
 from app.core.llm.provider import LLMProvider
-from app.core.metrics import emit_metrics
 from app.db.session import get_db_session
 from app.settings.config import settings
+
+logger = logging.getLogger(__name__)
 
 DbSession = Annotated[AsyncSession, Depends(get_db_session)]
 
@@ -23,9 +25,8 @@ async def require_internal_api_key(
     auth if this surface grows beyond the DevButter team.
     """
     if not settings.internal_api_key or x_internal_api_key != settings.internal_api_key:
-        await emit_metrics(
-            dimensions={"AuthType": "internal_api_key", "Reason": "missing_or_invalid_key"},
-            values={"AuthFailure": (1, "Count")},
+        logger.warning(
+            "Rejected request: missing or invalid internal_api_key", extra={"event": "auth_failed"}
         )
         raise NotFoundError("Not found")
 
@@ -42,9 +43,8 @@ async def require_service_api_key(
     Fails closed (404) the same way when unconfigured.
     """
     if not settings.service_api_key or x_service_api_key != settings.service_api_key:
-        await emit_metrics(
-            dimensions={"AuthType": "service_api_key", "Reason": "missing_or_invalid_key"},
-            values={"AuthFailure": (1, "Count")},
+        logger.warning(
+            "Rejected request: missing or invalid service_api_key", extra={"event": "auth_failed"}
         )
         raise NotFoundError("Not found")
 

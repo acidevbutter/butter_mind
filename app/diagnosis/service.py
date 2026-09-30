@@ -10,7 +10,6 @@ from app.core.exceptions import ConflictError, ValidationDomainError
 from app.core.llm.exceptions import LLMBudgetExceededError, LLMPricingUnavailableError
 from app.core.llm.provider import LLMProvider
 from app.core.llm.schemas import LLMMessage, LLMResponse
-from app.core.metrics import emit_metrics
 from app.diagnosis.models import (
     DiagnosisMessage,
     DiagnosisRequest,
@@ -482,16 +481,6 @@ class DiagnosisService:
             cached_input_tokens=cached_input_tokens,
             output_tokens=output_tokens,
             model=model,
-        )
-        average_score = (
-            sum(score for _chunk, score in retrieved) / len(retrieved) if retrieved else 0
-        )
-        await emit_metrics(
-            dimensions={"Flow": "diagnosis_chat"},
-            values={
-                "DiagnosisChunksUsed": (len(retrieved), "Count"),
-                "DiagnosisGroundingScore": (average_score, "None"),
-            },
         )
 
     @staticmethod
