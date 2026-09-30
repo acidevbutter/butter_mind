@@ -11,20 +11,15 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.core.metrics import SERVICE_NAME, emit_metrics, route_template, status_class
 from app.settings.config import settings
+from app.settings.constants import SERVICE_NAME
 
 logger = logging.getLogger("app.request")
+_PROBE_PATHS = frozenset({"/health", "/health/ready"})
 
 
 def _route_for_log(request: Request) -> str:
-    """Matched route template when available, else the raw path.
-
-    Unlike `route_template()` in app.core.metrics (which collapses unmatched
-    requests to a fixed "unmatched" label to keep metric dimension
-    cardinality low), a log line can carry the literal path for
-    404s/unmatched requests without that concern.
-    """
+    """Matched route template when available, else the raw path."""
     route = request.scope.get("route")
     path = getattr(route, "path", None)
     return path if isinstance(path, str) else request.url.path
@@ -54,40 +49,23 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             raise
         finally:
             duration_ms = (time.perf_counter() - start) * 1000
-            await emit_metrics(
-                dimensions={
-                    "Method": request.method,
-                    "Route": route_template(request),
-                    "StatusClass": status_class(status_code),
-                },
-                values={
-                    "RequestCount": (1, "Count"),
-                    "Latency": (duration_ms, "Milliseconds"),
-                    **(
-                        {"5xxCount": (1, "Count")}
-                        if status_code >= 500
-                        else {"4xxCount": (1, "Count")}
-                        if status_code >= 400
-                        else {}
-                    ),
-                },
-            )
-            log_extra = {
-                "service": SERVICE_NAME,
-                "environment": settings.environment,
-                "request_id": request_id,
-                "method": request.method,
-                "route": _route_for_log(request),
-                "status_code": status_code,
-                "duration_ms": round(duration_ms, 1),
-            }
-            if exc_info is not None:
-                # exc_info carries the traceback for correlation; never the
-                # request/response bodies (this service handles LLM prompts,
-                # which must never be logged) or any secret/PII.
-                logger.error("request_failed", extra=log_extra, exc_info=exc_info)
-            else:
-                logger.info("request_completed", extra=log_extra)
+            if request.url.path not in _PROBE_PATHS:
+                log_extra = {
+                    "service": SERVICE_NAME,
+                    "environment": settings.environment,
+                    "request_id": request_id,
+                    "method": request.method,
+                    "route": _route_for_log(request),
+                    "status_code": status_code,
+                    "duration_ms": round(duration_ms, 1),
+                }
+                if exc_info is not None:
+                    # exc_info carries the traceback for correlation; never the
+                    # request/response bodies (this service handles LLM prompts,
+                    # which must never be logged) or any secret/PII.
+                    logger.error("request_failed", extra=log_extra, exc_info=exc_info)
+                else:
+                    logger.info("request_completed", extra=log_extra)
 
 
 def register_middleware(app: FastAPI) -> None:

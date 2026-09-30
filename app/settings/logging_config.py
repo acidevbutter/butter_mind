@@ -3,8 +3,8 @@ import logging
 import logging.config
 from datetime import UTC, datetime
 
-from app.core.metrics import SERVICE_NAME
 from app.settings.config import settings
+from app.settings.constants import SERVICE_NAME
 from app.settings.terminal_logging import ServiceContextFilter, TerminalFormatter
 
 # Attributes present on every stdlib LogRecord (plus the synthetic ones the
@@ -27,13 +27,6 @@ class JsonFormatter(logging.Formatter):
     """
 
     def format(self, record: logging.LogRecord) -> str:
-        if record.name == "metrics":
-            # app.core.metrics.emit_metrics already renders a flat, complete
-            # JSON payload for New Relic ingestion -- wrapping it as this
-            # formatter's own "event" string would nest it inside another
-            # JSON object, hiding every metric field from New Relic's
-            # top-level-key auto-parsing.
-            return record.getMessage()
         payload = {
             "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,

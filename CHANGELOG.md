@@ -2,26 +2,17 @@
 
 ## [Unreleased]
 
-- Adicionada instrumentação OpenTelemetry de FastAPI, HTTPX e SQLAlchemy, com
-  traces e métricas APM enviados por OTLP/HTTP diretamente ao New Relic quando
-  `OTEL_ENABLED=true`. O stdout passa a usar logfmt legível e mantém os atributos
-  estruturados; a chave de licença existe apenas no ambiente de execução.
-  A convenção HTTP estável (`OTEL_SEMCONV_STABILITY_OPT_IN=http`) garante
-  `http.route`, necessário para o New Relic derivar métricas de transação APM.
-  Testes validam a configuração dos três instrumentors e os atributos da métrica HTTP.
+- Removida toda a telemetria/métricas (OpenTelemetry: MeterProvider, traces,
+  export OTLP de logs e instrumentações de FastAPI/HTTPX/SQLAlchemy) e os logs
+  JSON `metric emitted` (`emit_metrics`). Corrige o spam `Failed to export
+  metrics batch code: 401` em produção. O stdout mantém apenas logs legíveis
+  (`TerminalFormatter`), com um evento `request_completed`/`request_failed` por
+  requisição (probes de saúde não geram log). Falhas de autenticação e de
+  readiness que só eram sinalizadas por métrica agora geram `logger.warning`.
+  Dependências `opentelemetry-*` e variáveis `OTEL_*` removidas. A tabela
+  `diagnosis_turn_metrics` e o rastreio de uso de LLM (dados de negócio) não mudam.
+  Ref: acidevbutter/butter_blob#31.
 
-- Observabilidade HTTP normalizada: logs de request agora são JSON estruturado
-  (`app/settings/logging_config.JsonFormatter`), com um único evento
-  `request_completed`/`request_failed` por requisição emitido por
-  `RequestContextMiddleware` (antes, requisições com exceção geravam dois
-  logs — `logger.exception` + o log final — e o access log do uvicorn
-  duplicava o mesmo evento). `uvicorn.access` foi silenciado
-  (`WARNING`, `propagate=False`). Campos: `timestamp`, `level`, `logger`,
-  `event`, `service`, `environment`, `request_id`, `method`, `route`
-  (template da rota; path bruto só quando não casa nenhuma rota),
-  `status_code`, `duration_ms`. Sem novas dependências — o EMF via
-  `app/core/metrics.py` continua como estava (dimensões já eram
-  low-cardinality; `request_id` permanece exclusivo do log).
 - Conexão Postgres passa a ser `DATABASE_HOST` / `PORT` / `USER` / `PASSWORD` /
   `NAME`; o Pydantic monta `postgresql+asyncpg://`. `DATABASE_URL` residual
   impede o boot fora de development.
