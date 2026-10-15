@@ -37,6 +37,14 @@ class Settings(BaseSettings):
 
     internal_api_key: str = ""
 
+    # Brevo (https://developers.brevo.com) sends transactional email and
+    # authenticates client sender domains on behalf of the /emails and
+    # /sender-domains routes. Empty in development -- EmailProviderError
+    # surfaces as a 502 the first time a route actually needs it, rather
+    # than blocking app startup.
+    brevo_api_key: str = ""
+    brevo_api_base_url: str = "https://api.brevo.com/v3"
+
     # Shared key required on the public diagnosis/chat endpoints (proves the
     # caller is devbutter_backend, not a browser hitting the API directly).
     # Distinct from internal_api_key, which gates the small internal/admin

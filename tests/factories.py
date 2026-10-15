@@ -3,6 +3,14 @@ from collections.abc import AsyncIterator
 
 from pydantic import BaseModel
 
+from app.core.email.provider import EmailProvider
+from app.core.email.schemas import (
+    DnsRecord,
+    DomainAuthentication,
+    DomainVerificationResult,
+    EmailSendResult,
+    OutboundEmail,
+)
 from app.core.embeddings.provider import EmbeddingsProvider
 from app.core.llm.provider import LLMProvider
 from app.core.llm.schemas import (
@@ -79,6 +87,71 @@ class FakeLLMProvider(LLMProvider):
                 ),
             )
         raise NotImplementedError("Set structured_response on FakeLLMProvider before calling this")
+
+
+class FakeEmailProvider(EmailProvider):
+    """In-memory stand-in for BrevoProvider — avoids real API calls in tests.
+
+    `verify_result` controls what verify_domain returns; defaults to
+    verified=True so the happy path (register -> verify -> send) doesn't need
+    per-test wiring. Set it to a not-verified DomainVerificationResult to
+    exercise the "still pending" branch instead.
+    """
+
+    def __init__(
+        self,
+        *,
+        verify_result: DomainVerificationResult | None = None,
+    ):
+        self.verify_result = verify_result
+        self.sent: list[OutboundEmail] = []
+        self.authenticated_domains: list[str] = []
+
+    async def send(
+        self,
+        *,
+        message: OutboundEmail,
+    ) -> EmailSendResult:
+        self.sent.append(message)
+        return EmailSendResult(provider_message_id="<fake-message-id@relay.test>")
+
+    async def authenticate_domain(
+        self,
+        *,
+        domain: str,
+    ) -> DomainAuthentication:
+        self.authenticated_domains.append(domain)
+        return DomainAuthentication(
+            provider_domain_id="123",
+            dns_records=[
+                DnsRecord(
+                    record_type="txt",
+                    host_name=f"mail._domainkey.{domain}",
+                    value="k=rsa; p=fake",
+                    verified=False,
+                ),
+            ],
+        )
+
+    async def verify_domain(
+        self,
+        *,
+        domain: str,
+        provider_domain_id: str,
+    ) -> DomainVerificationResult:
+        if self.verify_result is not None:
+            return self.verify_result
+        return DomainVerificationResult(
+            verified=True,
+            dns_records=[
+                DnsRecord(
+                    record_type="txt",
+                    host_name=f"mail._domainkey.{domain}",
+                    value="k=rsa; p=fake",
+                    verified=True,
+                ),
+            ],
+        )
 
 
 class FakeEmbeddingsProvider(EmbeddingsProvider):

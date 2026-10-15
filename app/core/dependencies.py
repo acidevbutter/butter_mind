@@ -4,6 +4,8 @@ from typing import Annotated
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.email.brevo_provider import BrevoProvider
+from app.core.email.provider import EmailProvider
 from app.core.embeddings.disabled_provider import DisabledEmbeddingsProvider
 from app.core.embeddings.provider import EmbeddingsProvider
 from app.core.exceptions import NotFoundError
@@ -61,6 +63,16 @@ def get_llm_provider() -> LLMProvider:
 
 
 LLMProviderDep = Annotated[LLMProvider, Depends(get_llm_provider)]
+
+
+def get_email_provider() -> EmailProvider:
+    return BrevoProvider(
+        api_key=settings.brevo_api_key,
+        base_url=settings.brevo_api_base_url,
+    )
+
+
+EmailProviderDep = Annotated[EmailProvider, Depends(get_email_provider)]
 
 _embeddings_provider: EmbeddingsProvider | None = None
 
