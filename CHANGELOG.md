@@ -6,7 +6,7 @@
   `docker/Dockerfile.dokploy` (multi-stage, venv em `/opt/venv`, `tini` como
   PID 1, `HEALTHCHECK` em `/health`, uvicorn via `UVICORN_HOST`/`UVICORN_PORT`)
   e `docker-compose.hostinger.yml` virou `docker-compose.dokploy.yml`
-  (`mind-api` na `dokploy-network`, sem porta publicada, env via `.env` do
+  (`mind-api`, alias `<DEPLOY_ENV>-mind-api` na `dokploy-network`, sem porta publicada, env via `.env` do
   Dokploy). `docker-entrypoint.sh` aceita `RUN_MIGRATIONS=false`.
 
 - Removida toda a telemetria/métricas (OpenTelemetry: MeterProvider, traces,
