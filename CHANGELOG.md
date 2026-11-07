@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Deploy migrado da Coolify para o Dokploy: `docker/Dockerfile.hostinger` virou
+  `docker/Dockerfile.dokploy` (multi-stage, venv em `/opt/venv`, `tini` como
+  PID 1, `HEALTHCHECK` em `/health`, uvicorn via `UVICORN_HOST`/`UVICORN_PORT`)
+  e `docker-compose.hostinger.yml` virou `docker-compose.dokploy.yml`
+  (`mind-api`, alias `<DEPLOY_ENV>-mind-api` na `dokploy-network`, sem porta publicada, env via `.env` do
+  Dokploy). `docker-entrypoint.sh` aceita `RUN_MIGRATIONS=false`.
+
 - Removida toda a telemetria/métricas (OpenTelemetry: MeterProvider, traces,
   export OTLP de logs e instrumentações de FastAPI/HTTPX/SQLAlchemy) e os logs
   JSON `metric emitted` (`emit_metrics`). Corrige o spam `Failed to export
